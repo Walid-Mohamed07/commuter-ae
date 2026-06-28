@@ -1,0 +1,966 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800;900&display=swap");
+
+@import "tailwindcss";
+
+:root {
+  --font-en: "Poppins", system-ui, -apple-system, sans-serif;
+  --font-ar: "Cairo", system-ui, -apple-system, sans-serif;
+  --color-primary: #0b1e3d;
+  --color-primary-mid: #1c3557;
+  --color-secondary: #00c2a8;
+  --color-secondary-lt: #eff7f6;
+  --color-accent: #f5a623;
+  --color-surface: #f8f9fa;
+  --color-text: #0b1e3d;
+  --color-text-muted: #5a6a7a;
+  --color-danger: #e74c3c;
+  --color-warning: #f39c12;
+  --color-success: #27ae60;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Default font for English (LTR) */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-en);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Font for Arabic (RTL) */
+html[dir="rtl"] {
+  font-family: var(--font-ar);
+  direction: rtl;
+}
+
+html[dir="rtl"] body {
+  font-family: var(--font-ar);
+  direction: rtl;
+  text-align: right;
+}
+
+/* Ensure all text elements align right in RTL */
+html[dir="rtl"] * {
+  direction: rtl;
+}
+
+html[dir="rtl"] p,
+html[dir="rtl"] h1,
+html[dir="rtl"] h2,
+html[dir="rtl"] h3,
+html[dir="rtl"] h4,
+html[dir="rtl"] h5,
+html[dir="rtl"] h6,
+html[dir="rtl"] span,
+html[dir="rtl"] div,
+html[dir="rtl"] label,
+html[dir="rtl"] button,
+html[dir="rtl"] a,
+html[dir="rtl"] li,
+html[dir="rtl"] td,
+html[dir="rtl"] th {
+  text-align: right;
+}
+
+/* ── Map page ───────────────────────────────────────────── */
+.map-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+/* Override Google Maps canvas cursor when picking a location */
+.map-picking .map-container div,
+.map-picking .map-container canvas,
+.map-picking .map-container [style*="cursor"] {
+  cursor: inherit !important;
+}
+.leaflet-container {
+  z-index: 0 !important;
+}
+.leaflet-right {
+  right: 0 !important;
+}
+.leaflet-bottom {
+  bottom: 0 !important;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ── Glass navbar ────────────────────────────────────────── */
+.navbar-glass {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+/* ── Keep navbar LTR even in RTL mode ──────────────────── */
+html[dir="rtl"] .navbar-glass,
+html[dir="rtl"] nav,
+html[dir="rtl"] [class*="Navbar"],
+html[dir="rtl"] [class*="navbar"] {
+  direction: ltr;
+  text-align: left;
+}
+
+html[dir="rtl"] nav * {
+  direction: ltr;
+  text-align: left;
+}
+
+/* ── Nearby commuters chip animation ───────────────────── */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ── Spin animation ─────────────────────────────────────── */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Shake animation ────────────────────────────────────── */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+/* ── Price pop animation ────────────────────────────────────── */
+@keyframes pricePop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.price-pop {
+  animation: pricePop 0.25s ease;
+  display: inline-block;
+}
+
+/* ── Seat pop animation ─────────────────────────────────────── */
+@keyframes seatPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.seat-pop {
+  animation: seatPop 0.2s ease-out;
+}
+
+/* ── RTL Flexbox Support ────────────────────────────────── */
+html[dir="rtl"] .flex-row {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .flex-row-reverse {
+  flex-direction: row;
+}
+
+/* ── Auth split layout — responsive ─────────────────────── */
+.auth-left-panel {
+  display: flex;
+}
+.auth-mobile-bar {
+  display: none;
+}
+
+/* Desktop: locked split layout, right panel scrolls */
+.auth-layout {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+.auth-right-panel {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: #f8f9fa;
+}
+.auth-form-scroll {
+  padding: 48px 24px 72px;
+}
+
+/* ── RTL Margin & Padding Utilities ─────────────────────── */
+/* For LTR elements within RTL pages (e.g., icons, numbers) */
+html[dir="rtl"] .ltr {
+  direction: ltr;
+  text-align: left;
+}
+
+/* Swap margin-left → margin-right in RTL */
+html[dir="rtl"] .ml-0\.5 {
+  margin-right: 0.125rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-1 {
+  margin-right: 0.25rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-1\.5 {
+  margin-right: 0.375rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-2 {
+  margin-right: 0.5rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-3 {
+  margin-right: 0.75rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-4 {
+  margin-right: 1rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-5 {
+  margin-right: 1.25rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-6 {
+  margin-right: 1.5rem;
+  margin-left: 0;
+}
+html[dir="rtl"] .ml-auto {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+/* Swap margin-right → margin-left in RTL */
+html[dir="rtl"] .mr-0\.5 {
+  margin-left: 0.125rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-1 {
+  margin-left: 0.25rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-1\.5 {
+  margin-left: 0.375rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-2 {
+  margin-left: 0.5rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-3 {
+  margin-left: 0.75rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-4 {
+  margin-left: 1rem;
+  margin-right: 0;
+}
+html[dir="rtl"] .mr-auto {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+/* Swap padding-left → padding-right in RTL */
+html[dir="rtl"] .pl-0\.5 {
+  padding-right: 0.125rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-1 {
+  padding-right: 0.25rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-1\.5 {
+  padding-right: 0.375rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-2 {
+  padding-right: 0.5rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-3 {
+  padding-right: 0.75rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-4 {
+  padding-right: 1rem;
+  padding-left: 0;
+}
+html[dir="rtl"] .pl-6 {
+  padding-right: 1.5rem;
+  padding-left: 0;
+}
+
+/* Swap padding-right → padding-left in RTL */
+html[dir="rtl"] .pr-1 {
+  padding-left: 0.25rem;
+  padding-right: 0;
+}
+html[dir="rtl"] .pr-2 {
+  padding-left: 0.5rem;
+  padding-right: 0;
+}
+html[dir="rtl"] .pr-3 {
+  padding-left: 0.75rem;
+  padding-right: 0;
+}
+html[dir="rtl"] .pr-4 {
+  padding-left: 1rem;
+  padding-right: 0;
+}
+
+/* Swap border-left → border-right in RTL */
+html[dir="rtl"] .border-l {
+  border-right-width: 1px;
+  border-left-width: 0;
+}
+html[dir="rtl"] .border-l-2 {
+  border-right-width: 2px;
+  border-left-width: 0;
+}
+html[dir="rtl"] .border-l-4 {
+  border-right-width: 4px;
+  border-left-width: 0;
+}
+html[dir="rtl"] .border-r {
+  border-left-width: 1px;
+  border-right-width: 0;
+}
+
+/* Swap rounded-l/r in RTL */
+html[dir="rtl"] .rounded-l-lg {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+html[dir="rtl"] .rounded-r-lg {
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+/* Swap text-left / text-right in RTL */
+html[dir="rtl"] .text-left {
+  text-align: right;
+}
+html[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+/* items-start in flex stays the same in RTL (cross-axis) — no change needed */
+/* justify-start flips in RTL */
+html[dir="rtl"] .justify-start {
+  justify-content: flex-end;
+}
+html[dir="rtl"] .justify-end {
+  justify-content: flex-start;
+}
+html[dir="rtl"] .justify-between {
+  flex-direction: row-reverse;
+}
+
+/* Grid and flex utilities */
+html[dir="rtl"] .grid-cols-2 {
+  direction: rtl;
+}
+html[dir="rtl"] .grid-cols-3 {
+  direction: rtl;
+}
+html[dir="rtl"] .gap-2 {
+  gap: 0.5rem;
+}
+html[dir="rtl"] .gap-3 {
+  gap: 0.75rem;
+}
+html[dir="rtl"] .flex-row-reverse {
+  flex-direction: row;
+}
+
+/* Space utilities */
+html[dir="rtl"] .space-y-3 > * {
+  margin-top: 0.75rem;
+}
+html[dir="rtl"] .space-y-4 > * {
+  margin-top: 1rem;
+}
+
+/* Position fixes */
+html[dir="rtl"] .left-0 {
+  right: 0;
+  left: auto;
+}
+html[dir="rtl"] .right-0 {
+  left: 0;
+  right: auto;
+}
+
+/* Keep seat layout always LTR */
+html[dir="rtl"] .seat-layout-ltr {
+  direction: ltr !important;
+  text-align: left !important;
+}
+html[dir="rtl"] .seat-layout-ltr * {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+@media (max-width: 1023px) {
+  .auth-left-panel {
+    display: none !important;
+  }
+  .auth-mobile-bar {
+    display: flex !important;
+  }
+
+  /* Mobile: normal document scroll, no locked height */
+  .auth-layout {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    display: block;
+  }
+  .auth-right-panel {
+    height: auto;
+    overflow-y: visible;
+  }
+  .auth-form-scroll {
+    padding: 24px 16px 56px;
+  }
+
+  /* Auth form heading scale-down on small screens */
+  .auth-form-scroll h1 {
+    font-size: 22px !important;
+  }
+}
+
+/* ── Spinner animation ───────────────────────────────────── */
+@keyframes commuter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: commuter-spin 0.7s linear infinite;
+}
+/* ── Driver app main content padding ─────────────── */
+@media (max-width: 767px) {
+  .driver-main {
+    padding: 16px 12px 32px !important;
+  }
+}
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ── Schedule Components RTL Support ────────────────────── */
+/* Header layout: slot label | delete button → button | label in RTL */
+html[dir="rtl"] .schedule-header-flex {
+  flex-direction: row-reverse;
+}
+
+/* Route display with dot indicators */
+html[dir="rtl"] .route-dot-flex {
+  flex-direction: row-reverse;
+}
+
+/* Days picker - maintain wrap but adjust direction */
+html[dir="rtl"] .days-picker-flex {
+  flex-direction: row-reverse;
+}
+
+/* Time slot cards - ensure proper grid flow in RTL */
+html[dir="rtl"] .time-slot-grid {
+  direction: rtl;
+}
+
+/* List items with flex justify-between */
+html[dir="rtl"] .schedule-list-item {
+  flex-direction: row-reverse;
+}
+
+/* Stop items with edit/remove buttons */
+html[dir="rtl"] .stop-item-buttons {
+  flex-direction: row-reverse;
+}
+
+/* ── Profile Section Headers RTL Support ────────────────────── */
+/* Headers with justify-between (e.g., Favorite Places, Related Passengers) */
+html[dir="rtl"] .profile-section-header {
+  flex-direction: row-reverse;
+}
+
+/* Ensure inline-flex button groups work in RTL */
+html[dir="rtl"] .button-group-row {
+  flex-direction: row-reverse;
+}
+
+/* ── Modal Centering RTL Support ────────────────────────────── */
+/* Desktop modals positioned at center (md:left-1/2 md:-translate-x-1/2) */
+html[dir="rtl"] .modal-desktop-center {
+  left: auto !important;
+  right: 50% !important;
+  transform: translateY(-50%) translateX(50%) !important;
+}
+
+/* ── Schedule Centering (works in both LTR and RTL) ──────── */
+/* Center text in elements */
+.schedule-center-text {
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Center single character or short text (days, trip type badges) */
+.schedule-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Button text centering */
+.schedule-btn-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Trip type button centering (grid-based) */
+.trip-type-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+html[dir="rtl"] .trip-type-btn {
+  flex-direction: row;
+  text-align: center !important;
+}
+
+/* Modal header center in RTL and LTR */
+html[dir="rtl"] .schedule-header-center,
+.schedule-header-center {
+  text-align: center;
+}
+
+/* Section title container RTL - swap positions */
+html[dir="rtl"] .section-title-container {
+  flex-direction: row-reverse;
+}
+
+/* Section title inner (bar + text) RTL - bar on right */
+html[dir="rtl"] .section-title-text {
+  flex-direction: row-reverse;
+}
+
+/* Pickup time 2-col grid RTL - swap From/To column order */
+html[dir="rtl"] .pickup-time-grid {
+  direction: rtl;
+}
+
+/* Passenger / related-person card row RTL */
+html[dir="rtl"] .passenger-card-row {
+  flex-direction: row-reverse;
+}
+
+/* OutboundRouteCard numbered row RTL */
+html[dir="rtl"] .outbound-row-item {
+  flex-direction: row-reverse;
+}
+
+/* Right label text alignment in RTL */
+html[dir="rtl"] .section-title-label {
+  text-align: left;
+}
+
+html[dir="ltr"] .section-title-label,
+.section-title-label {
+  text-align: right;
+}
+
+/* Page header title centering in RTL */
+html[dir="rtl"] .page-header-container {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .page-header-title {
+  text-align: center;
+  flex: 1;
+}
+
+/* Review section title centering in RTL */
+html[dir="rtl"] .review-section-title {
+  text-align: center;
+}
+
+/* Review submit button text center */
+html[dir="rtl"] .review-submit-btn,
+.review-submit-btn {
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MAP — UBER-STYLE OVERLAYS
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Pulsing GPS dot ─────────────────────────────────────── */
+.gps-overlay {
+  width: 40px;
+  height: 40px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+@keyframes gpsPulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.gps-ring {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.28);
+  animation: gpsPulse 2.2s ease-out infinite;
+}
+.gps-ring-delay {
+  animation-delay: 1.1s;
+}
+
+.gps-core {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2.5px solid #ffffff;
+  box-shadow:
+    0 2px 10px rgba(37, 99, 235, 0.55),
+    0 0 0 4px rgba(37, 99, 235, 0.14);
+}
+
+/* ── Heading cone (direction arrow) ─────────────────────── */
+.gps-heading-cone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* Triangle pointing up; rotated by heading in JS */
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 24px solid rgba(37, 99, 235, 0.38);
+  transform-origin: 0 12px;
+  margin-left: -7px;
+  margin-top: -22px;
+  pointer-events: none;
+  filter: blur(1px);
+}
+
+/* ── Locate-me button ────────────────────────────────────── */
+.map-locate-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 236px; /* just above zoom controls */
+  z-index: 500;
+  width: 44px;
+  height: 44px;
+  background: #ffffff;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0b1e3d;
+  box-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.13),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+/* ── Route distance/time badge ───────────────────────────── */
+.route-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #0b1e3d;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 5px 13px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: Inter, system-ui, sans-serif;
+  box-shadow: 0 3px 16px rgba(11, 30, 61, 0.4);
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0.025em;
+}
+.route-badge-km {
+  color: #4361ee;
+}
+.route-badge-sep {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+/* ── Custom zoom controls ────────────────────────────────── */
+.map-zoom-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 180px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.13),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.map-zoom-btn {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0b1e3d;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  font-family: inherit;
+}
+.map-zoom-btn:hover {
+  background: #eff7f6;
+  color: #00c2a8;
+}
+.map-zoom-btn:active {
+  background: #c8e8e4;
+}
+
+.map-zoom-divider {
+  height: 1px;
+  background: #e8edf0;
+  margin: 0 10px;
+}
+
+/* ── Google Maps InfoWindow brand override ───────────────── */
+.gm-style .gm-style-iw-c {
+  border-radius: 12px !important;
+  padding: 0 !important;
+  box-shadow: 0 4px 24px rgba(11, 30, 61, 0.18) !important;
+  border: 1px solid #c8e8e4 !important;
+}
+.gm-style .gm-style-iw-d {
+  overflow: hidden !important;
+  padding: 12px 14px !important;
+}
+.gm-style .gm-style-iw-tc::after {
+  background: #ffffff !important;
+}
+.gm-style button.gm-ui-hover-effect {
+  top: 4px !important;
+  right: 4px !important;
+  opacity: 0.55;
+}
+
+/* ══════════════════════════════════════════════════════════
+   FONTS — Arabic / RTL
+   ══════════════════════════════════════════════════════════ */
+
+[dir="rtl"] body {
+  font-family: var(--font-cairo), system-ui, sans-serif;
+}
+
+/* ══════════════════════════════════════════════════════════
+   RTL GLOBAL OVERRIDES
+   ══════════════════════════════════════════════════════════ */
+
+/* Default text alignment flip */
+[dir="rtl"] {
+  text-align: right;
+}
+
+/* Inline-block directional icons (arrows, chevrons) */
+[dir="rtl"] .icon-directional {
+  transform: scaleX(-1);
+}
+
+/* Route arrow between origin and destination */
+[dir="rtl"] .route-arrow {
+  transform: scaleX(-1);
+  display: inline-block;
+}
+
+/* Left-border accents flip to right */
+[dir="rtl"] .border-l-accent {
+  border-left: none;
+  border-right: 4px solid #00c2a8;
+}
+
+/* Floating search bar — swap left to right */
+[dir="rtl"] .floating-search {
+  left: auto;
+  right: 1rem;
+}
+
+/* Locate me button — swap right to left */
+[dir="rtl"] .locate-btn {
+  right: auto;
+  left: 1rem;
+}
+
+/* Nearby commuters chip — swap left to right */
+[dir="rtl"] .nearby-chip {
+  left: auto;
+  right: 1rem;
+}
+
+/* Drawer — slides from left in RTL */
+[dir="rtl"] .drawer {
+  right: auto;
+  left: 0;
+  transform: translateX(-100%);
+}
+[dir="rtl"] .drawer.open {
+  transform: translateX(0);
+}
+
+/* Status timeline — reverse direction */
+[dir="rtl"] .status-timeline {
+  flex-direction: row-reverse;
+}
+
+/* Price raised banner — border flips */
+[dir="rtl"] .price-raised-banner {
+  border-left: none;
+  border-right: 4px solid #f57f17;
+  border-radius: 0 8px 8px 0;
+}
+
+/* Input icons — swap padding side */
+[dir="rtl"] .input-icon-left {
+  padding-left: 16px;
+  padding-right: 48px;
+}
+
+/* Seat map — mirror car diagram horizontally */
+[dir="rtl"] .seat-map-svg {
+  transform: scaleX(-1);
+}
+
+/* Map zoom controls — flip to left side in RTL */
+[dir="rtl"] .map-zoom-controls {
+  right: auto;
+  left: 16px;
+}
+
+/* Leaflet popup text direction */
+[dir="rtl"] .leaflet-popup-content {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Chip rows — RTL scroll direction */
+[dir="rtl"] .chip-row {
+  direction: rtl;
+}
+
+/* Slide-in animation RTL flip */
+@keyframes slideInRight {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Auth mobile bar border flip */
+[dir="rtl"] .auth-mobile-bar {
+  flex-direction: row-reverse;
+}
+
+/* Driver navbar mobile menu active border flip */
+[dir="rtl"] .mobile-link {
+  border-left: none;
+  border-right: 3px solid transparent;
+}
+[dir="rtl"] .mobile-link.active-link {
+  border-right-color: #00c2a8;
+}
