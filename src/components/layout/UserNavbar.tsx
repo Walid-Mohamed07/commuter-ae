@@ -1,29 +1,31 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, LogOut, User, Wallet, Bell } from 'lucide-react';
-import { useAuth } from '@/lib/auth/AuthContext';
-import authApi from '@/lib/api/auth';
-import { getUnreadCount } from '@/lib/api/notifications';
-import LanguageToggle from './LanguageToggle';
-import { useTranslations } from 'next-intl';
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { ChevronDown, LogOut, User, Wallet, Bell } from "lucide-react";
+import { useAuth } from "@/lib/auth/AuthContext";
+import authApi from "@/lib/api/auth";
+import { getUnreadCount } from "@/lib/api/notifications";
+import LanguageToggle from "./LanguageToggle";
+import { useTranslations } from "next-intl";
 
 export default function UserNavbar() {
-  const t = useTranslations('nav');
-  const tCommon = useTranslations('common');
+  const t = useTranslations("nav");
+  const tCommon = useTranslations("common");
   const pathname = usePathname();
   const router = useRouter();
-  const isMapPage = pathname.startsWith('/user/request/map') || pathname.startsWith('/user/request/return-map');
+  const isMapPage =
+    pathname.startsWith("/user/request/map") ||
+    pathname.startsWith("/user/request/return-map");
 
   const LINKS = [
-    { label: t('create_request'), href: '/user/request/new', isCreate: true },
-    { label: t('my_requests'),    href: '/user/my-requests', isCreate: false },
-    { label: t('profile'),        href: '/user/profile',     isCreate: false },
+    { label: t("create_request"), href: "/user/request/new", isCreate: true },
+    { label: t("my_requests"), href: "/user/my-requests", isCreate: false },
+    { label: t("profile"), href: "/user/profile", isCreate: false },
   ];
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [userName, setUserName] = useState(t('default_user'));
+  const [userName, setUserName] = useState(t("default_user"));
   const [unreadCount, setUnreadCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { name: authName, logout, profilePhoto } = useAuth();
@@ -38,7 +40,7 @@ export default function UserNavbar() {
         const count = await getUnreadCount();
         setUnreadCount(count);
       } catch (error) {
-        console.error('Failed to fetch unread notification count:', error);
+        console.error("Failed to fetch unread notification count:", error);
       }
     }
 
@@ -47,12 +49,15 @@ export default function UserNavbar() {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   async function handleLogout() {
@@ -62,14 +67,14 @@ export default function UserNavbar() {
       // ignore — clear client session regardless
     }
     logout();
-    router.replace('/');
+    router.replace("/");
   }
 
   const initials = userName
-    .split(' ')
+    .split(" ")
     .map((p) => p[0])
     .slice(0, 2)
-    .join('')
+    .join("")
     .toUpperCase();
 
   return (
@@ -84,29 +89,29 @@ export default function UserNavbar() {
       {/* Desktop only */}
       <nav
         dir="ltr"
-        className={`hidden md:flex ${isMapPage ? 'navbar-glass' : ''}`}
+        className={`hidden md:flex ${isMapPage ? "navbar-glass" : ""}`}
         style={{
-          position: 'sticky',
+          position: "sticky",
           top: 0,
           zIndex: 50,
           height: 64,
-          background: isMapPage ? undefined : '#fff',
-          borderBottom: isMapPage ? undefined : '1px solid #E2E8F0',
-          alignItems: 'center',
-          padding: '0 32px',
-          fontFamily: 'Inter, system-ui, sans-serif',
+          background: isMapPage ? undefined : "#fff",
+          borderBottom: isMapPage ? undefined : "1px solid #E2E8F0",
+          alignItems: "center",
+          padding: "0 32px",
+          fontFamily: "Inter, system-ui, sans-serif",
         }}
       >
         {/* Logo — left */}
         <Link
           href="/user/my-requests"
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 8,
-            textDecoration: 'none',
+            textDecoration: "none",
             flexShrink: 0,
-            position: 'relative',
+            position: "relative",
             zIndex: 1,
           }}
         >
@@ -115,32 +120,41 @@ export default function UserNavbar() {
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: '#0B1E3D',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: "#0B1E3D",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <span style={{ color: '#00C2A8', fontWeight: 900, fontSize: 16, lineHeight: 1 }}>
+            <span
+              style={{
+                color: "#00C2A8",
+                fontWeight: 900,
+                fontSize: 16,
+                lineHeight: 1,
+              }}
+            >
               C
             </span>
           </div>
-          <span style={{ color: '#0B1E3D', fontWeight: 700, fontSize: 18 }}>{tCommon('app_name')}</span>
+          <span style={{ color: "#0B1E3D", fontWeight: 700, fontSize: 18 }}>
+            {tCommon("app_name")}
+          </span>
         </Link>
 
         {/* Center nav links */}
         <div
           style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            display: 'flex',
-            alignItems: 'center',
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            alignItems: "center",
             gap: 36,
           }}
         >
           {LINKS.map(({ label, href, isCreate }) => {
-            const active = pathname === href || pathname.startsWith(href + '/');
+            const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
@@ -150,11 +164,15 @@ export default function UserNavbar() {
                   fontSize: 15,
                   fontWeight: active ? 600 : 500,
                   color: isCreate
-                    ? active ? '#00C2A8' : '#009E8A'
-                    : active ? '#0B1E3D' : '#5A6A7A',
+                    ? active
+                      ? "#00C2A8"
+                      : "#009E8A"
+                    : active
+                      ? "#0B1E3D"
+                      : "#5A6A7A",
                   borderBottom: active
-                    ? `2px solid ${isCreate ? '#00C2A8' : '#00C2A8'}`
-                    : '2px solid transparent',
+                    ? `2px solid ${isCreate ? "#00C2A8" : "#00C2A8"}`
+                    : "2px solid transparent",
                   paddingBottom: 4,
                 }}
               >
@@ -165,122 +183,159 @@ export default function UserNavbar() {
         </div>
 
         {/* Right: language toggle + user avatar + dropdown */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 1 }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           <LanguageToggle />
-        <div ref={dropdownRef} style={{ position: 'relative' }}>
-          <button
-            onClick={() => setDropdownOpen((o) => !o)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'none',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              padding: '6px 10px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              minHeight: 44,
-            }}
-          >
-            {/* Avatar with notification dot */}
-            <div style={{ position: 'relative' }}>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  background: '#0B1E3D',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#00C2A8',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  overflow: 'hidden',
-                }}
-              >
-                {profilePhoto
-                  ? <img src={profilePhoto} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : initials
-                }
-              </div>
-              {unreadCount > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -2,
-                    width: 10,
-                    height: 10,
-                    background: '#E74C3C',
-                    borderRadius: '50%',
-                    border: '2px solid #fff',
-                  }}
-                />
-              )}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 500, color: '#0B1E3D' }}>{userName}</span>
-            <ChevronDown
-              size={14}
-              color="#5A6A7A"
+          <div ref={dropdownRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setDropdownOpen((o) => !o)}
               style={{
-                transform: dropdownOpen ? 'rotate(180deg)' : 'none',
-                transition: 'transform 0.2s',
-              }}
-            />
-          </button>
-
-          {dropdownOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                right: 0,
-                background: '#fff',
-                border: '1px solid #E2E8F0',
-                borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                minWidth: 200,
-                overflow: 'hidden',
-                zIndex: 100,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: "none",
+                border: "1px solid #E2E8F0",
+                borderRadius: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                minHeight: 44,
               }}
             >
-              <Link href="/user/profile" className="unav-drop-item" onClick={() => setDropdownOpen(false)}>
-                <User size={16} />
-                {t('profile')}
-              </Link>
-              <Link href="/user/wallet" className="unav-drop-item" onClick={() => setDropdownOpen(false)}>
-                <Wallet size={16} />
-                {t('wallet')}
-              </Link>
-              <Link href="/user/notifications" className="unav-drop-item" onClick={() => setDropdownOpen(false)}>
-                <Bell size={16} />
-                {t('notifications')}
+              {/* Avatar with notification dot */}
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "#0B1E3D",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#00C2A8",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    overflow: "hidden",
+                  }}
+                >
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt="profile"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    initials
+                  )}
+                </div>
                 {unreadCount > 0 && (
-                  <span
+                  <div
                     style={{
-                      marginLeft: 'auto',
-                      background: '#E74C3C',
-                      color: '#fff',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      borderRadius: 10,
-                      padding: '1px 6px',
+                      position: "absolute",
+                      top: -2,
+                      right: -2,
+                      width: 10,
+                      height: 10,
+                      background: "#E74C3C",
+                      borderRadius: "50%",
+                      border: "2px solid #fff",
                     }}
-                  >
-                    {unreadCount}
-                  </span>
+                  />
                 )}
-              </Link>
-              <div style={{ height: 1, background: '#E2E8F0', margin: '4px 0' }} />
-              <button className="unav-drop-item unav-drop-danger" onClick={handleLogout}>
-                <LogOut size={16} />
-                {tCommon('sign_out')}
-              </button>
-            </div>
-          )}
-        </div>
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 500, color: "#0B1E3D" }}>
+                {userName}
+              </span>
+              <ChevronDown
+                size={14}
+                color="#5A6A7A"
+                style={{
+                  transform: dropdownOpen ? "rotate(180deg)" : "none",
+                  transition: "transform 0.2s",
+                }}
+              />
+            </button>
+
+            {dropdownOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  background: "#fff",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                  minWidth: 200,
+                  overflow: "hidden",
+                  zIndex: 100,
+                }}
+              >
+                <Link
+                  href="/user/profile"
+                  className="unav-drop-item"
+                  onClick={() => setDropdownOpen(false)}
+                >
+                  <User size={16} />
+                  {t("profile")}
+                </Link>
+                <Link
+                  href="/user/wallet"
+                  className="unav-drop-item"
+                  onClick={() => setDropdownOpen(false)}
+                >
+                  <Wallet size={16} />
+                  {t("wallet")}
+                </Link>
+                <Link
+                  href="/user/notifications"
+                  className="unav-drop-item"
+                  onClick={() => setDropdownOpen(false)}
+                >
+                  <Bell size={16} />
+                  {t("notifications")}
+                  {unreadCount > 0 && (
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        background: "#E74C3C",
+                        color: "#fff",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        borderRadius: 10,
+                        padding: "1px 6px",
+                      }}
+                    >
+                      {unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <div
+                  style={{ height: 1, background: "#E2E8F0", margin: "4px 0" }}
+                />
+                <button
+                  className="unav-drop-item unav-drop-danger"
+                  onClick={handleLogout}
+                >
+                  <LogOut size={16} />
+                  {tCommon("sign_out")}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
     </>

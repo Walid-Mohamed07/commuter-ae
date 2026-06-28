@@ -1,35 +1,35 @@
-import type { RequestStatus } from '@/types/user';
+import type { RequestStatus } from "@/types/user";
 
 const STATUS_CONFIG: Record<
   RequestStatus,
   { label: string; bg: string; color: string; dot?: boolean }
 > = {
-  available: { label: 'Available', bg: '#EFF7F6', color: '#00C2A8' },
-  submitted: { label: 'Submitted', bg: '#E2E8F0', color: '#5A6A7A' },
+  available: { label: "Available", bg: "#EFF7F6", color: "#00C2A8" },
+  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
   matching: {
-    label: 'Matching…',
-    bg: '#FFF3E0',
-    color: '#E65100',
+    label: "Matching…",
+    bg: "#FFF3E0",
+    color: "#E65100",
   },
   finding_driver: {
-    label: 'Finding driver…',
-    bg: '#FFF3E0',
-    color: '#E65100',
+    label: "Finding driver…",
+    bg: "#FFF3E0",
+    color: "#E65100",
   },
   driver_offered: {
-    label: 'Matched',
-    bg: '#EFF7F6',
-    color: '#00C2A8',
+    label: "Matched",
+    bg: "#EFF7F6",
+    color: "#00C2A8",
   },
   price_raised: {
-    label: '⚠ Price updated',
-    bg: '#FFF8E1',
-    color: '#F57F17',
+    label: "⚠ Price updated",
+    bg: "#FFF8E1",
+    color: "#F57F17",
   },
-  confirmed: { label: 'Confirmed', bg: '#E8F5E9', color: '#27AE60' },
-  active: { label: '● Active', bg: '#00C2A8', color: '#fff', dot: true },
-  completed: { label: 'Completed', bg: '#0B1E3D', color: '#fff' },
-  cancelled: { label: 'Cancelled', bg: '#FFEBEE', color: '#E74C3C' },
+  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
+  active: { label: "● Active", bg: "#00C2A8", color: "#fff", dot: true },
+  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
+  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
 };
 
 interface StatusPillProps {
@@ -41,16 +41,16 @@ export default function StatusPill({ status }: StatusPillProps) {
   return (
     <span
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
+        display: "inline-flex",
+        alignItems: "center",
         gap: 4,
-        padding: '4px 10px',
+        padding: "4px 10px",
         borderRadius: 20,
         fontSize: 12,
         fontWeight: 600,
         background: cfg.bg,
         color: cfg.color,
-        whiteSpace: 'nowrap',
+        whiteSpace: "nowrap",
       }}
     >
       {cfg.label}

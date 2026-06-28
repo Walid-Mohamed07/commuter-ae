@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const KEY = process.env.GOOGLE_MAPS_API_KEY!;
+const KEY =
+  process.env.GOOGLE_MAPS_API_KEY ??
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!;
 
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.searchParams.get("origin");
@@ -20,6 +22,9 @@ export async function GET(req: NextRequest) {
   if (!res.ok) return NextResponse.json([], { status: 502 });
 
   const data = await res.json();
+  if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+    console.error("[places/autocomplete]", data.status, data.error_message);
+  }
   const leg = data.routes?.[0]?.legs?.[0];
   if (!leg) return NextResponse.json([]);
 

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { fetchRoadRoute, type Waypoint, type OSRMRoute } from '@/lib/osrm';
+import { useState, useEffect, useRef } from "react";
+import { fetchRoadRoute, type Waypoint, type OSRMRoute } from "@/lib/osrm";
 
 interface UseRouteResult {
   route: OSRMRoute | null;
@@ -8,9 +8,9 @@ interface UseRouteResult {
 }
 
 export function useRouteOSRM(waypoints: Waypoint[]): UseRouteResult {
-  const [route,   setRoute]   = useState<OSRMRoute | null>(null);
+  const [route, setRoute] = useState<OSRMRoute | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Stable ref so the effect body always sees the latest waypoints
   const waypointsRef = useRef(waypoints);
