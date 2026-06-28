@@ -1,4 +1,4 @@
-import L from 'leaflet';
+import L from "leaflet";
 
 /** Numbered pickup marker (1, 2, 3…) */
 export function pickupIcon(index: number): L.DivIcon {
@@ -13,9 +13,9 @@ export function pickupIcon(index: number): L.DivIcon {
       font-family:Inter,sans-serif;
       box-shadow:0 2px 8px rgba(0,0,0,0.3);
     ">${index + 1}</div>`,
-    className: '',
-    iconSize:    [32, 32],
-    iconAnchor:  [16, 16],
+    className: "",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
     popupAnchor: [0, -18],
   });
 }
@@ -32,8 +32,8 @@ export const destinationIcon: L.DivIcon = L.divIcon({
       box-shadow:0 2px 8px rgba(0,0,0,0.3);
     "></div>
   </div>`,
-  className: '',
-  iconSize:    [32, 40],
-  iconAnchor:  [16, 40],
+  className: "",
+  iconSize: [32, 40],
+  iconAnchor: [16, 40],
   popupAnchor: [0, -42],
 });

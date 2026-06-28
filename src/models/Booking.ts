@@ -24,13 +24,12 @@ const TripSchema = new Schema(
         "microbus_shared",
       ],
     },
-    rideType: { type: String, required: true, enum: ["private", "shared"] }, // derived from vehicleType
-    arrivalTime: { type: String, required: true }, // "HH:MM" (all vehicles)
-    pickupFrom: { type: String, required: true }, // "HH:MM" computed
-    pickupTo: { type: String, required: true }, // "HH:MM" computed
+    rideType: { type: String, required: true, enum: ["private", "shared"] },
+    arrivalTime: { type: String, required: true }, // "HH:MM"
+    pickupTime: { type: String, required: true }, // "HH:MM" — single computed field
     distanceKm: { type: Number, required: true },
     durationMinutes: { type: Number, required: true },
-    priceEgp: { type: Number, required: true }, // priceFor() — server-recomputed, never trusted from client
+    priceEgp: { type: Number, required: true }, // server-recomputed
   },
   { _id: true },
 );
@@ -38,17 +37,32 @@ const TripSchema = new Schema(
 const BookingSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
-    date: { type: String, required: true }, // "YYYY-MM-DD" (one of next 7 days)
+    date: { type: String, required: true }, // "YYYY-MM-DD"
     trips: {
       type: [TripSchema],
       required: true,
       validate: (v: unknown[]) => v.length > 0,
     },
+    amountEgp: { type: Number, required: true }, // server sum of trips[].priceEgp
+
+    // ── Payment (Kashier) ──
+    paymentStatus: {
+      type: String,
+      required: true,
+      default: "pending",
+      enum: ["pending", "paid", "failed", "refunded"],
+    },
+    kashierSessionId: { type: String },
+    kashierOrderId: { type: String }, // = booking _id sent as orderId
+    paidAt: { type: Date },
+
+    // ── Ride lifecycle ──
     status: {
       type: String,
       required: true,
-      default: "submitted",
+      default: "pending_payment",
       enum: [
+        "pending_payment",
         "submitted",
         "matching",
         "confirmed",
