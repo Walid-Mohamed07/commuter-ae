@@ -8,7 +8,7 @@ import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
 import type { VehicleKey } from "@/lib/config/vehicles";
 
-export const metadata = { title: "My Trips — Commuter" };
+export const metadata = { title: "My requests — Commuter" };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ interface BookingRow {
 
 export default async function MyTripsPage() {
   const session = await getSession();
-  if (!session) redirect("/login?redirect=/my-trips");
+  if (!session) redirect("/login?redirect=/my-requests");
 
   await connectDB();
 
@@ -209,7 +209,7 @@ export default async function MyTripsPage() {
               letterSpacing: "-0.02em",
             }}
           >
-            My trips
+            My requests
           </h1>
           <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
             {bookings.length === 0

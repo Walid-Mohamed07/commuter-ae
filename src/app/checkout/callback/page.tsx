@@ -11,7 +11,7 @@ interface SearchParams {
   status?: string; // Kashier adds: SUCCESS | FAILURE
 }
 
-export const metadata = { title: "Payment — CommuterAE" };
+export const metadata = { title: "Payment — Commuter" };
 
 // Revalidate on every request so status reflects latest webhook update
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function CallbackPage({
   const { bookingId, status: kashierStatus } = await searchParams;
 
   if (!bookingId || !Types.ObjectId.isValid(bookingId)) {
-    redirect("/my-trips");
+    redirect("/my-requests");
   }
 
   await connectDB();
@@ -43,7 +43,7 @@ export default async function CallbackPage({
       date: string;
     }>();
 
-  if (!booking) redirect("/my-trips");
+  if (!booking) redirect("/my-requests");
 
   const isPaid = booking.paymentStatus === "paid";
   const isFailed =
@@ -74,7 +74,7 @@ export default async function CallbackPage({
             letterSpacing: "-0.025em",
           }}
         >
-          Commuter<span style={{ color: "#00C2A8" }}>AE</span>
+          Commuter
         </span>
       </Link>
 
@@ -150,7 +150,7 @@ export default async function CallbackPage({
               }}
             >
               Your payment is being verified. This usually takes a few seconds.
-              Check <strong>My trips</strong> for the updated status.
+              Check <strong>My requests</strong> for the updated status.
             </p>
           </>
         )}
@@ -188,7 +188,7 @@ export default async function CallbackPage({
         {/* Actions */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Link
-            href="/my-trips"
+            href="/my-requests"
             style={{
               display: "flex",
               alignItems: "center",
@@ -204,7 +204,7 @@ export default async function CallbackPage({
               transition: "background 0.2s",
             }}
           >
-            View my trips
+            View my requests
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
 

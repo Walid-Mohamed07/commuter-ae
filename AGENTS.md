@@ -51,7 +51,7 @@ src/lib/store/useTripStore.ts — Zustand: { pickup, dropoff } persisted to sess
 
 JWT via `jose` in an httpOnly, Secure, SameSite=Lax cookie. Passwords via bcryptjs.
 APIs: /api/auth/register, /api/auth/login, /api/auth/logout. Helper src/lib/auth/session.ts
-→ getSession() usable in server components. Protect /create, /profile, /my-trips on the server.
+→ getSession() usable in server components. Protect /create, /profile, /my-requests on the server.
 
 ## Database (Mongoose — models already defined)
 
@@ -98,7 +98,7 @@ your recent activity") → How-it-works (3–4 steps) → Vehicle types & pricin
 /login — email + password; on success set cookie, redirect to /create (or stored intent).
 /checkout/callback — post-payment landing; reads booking, shows paid/processing/failed state.
 /profile — server: getSession(); name/email/phone + minimal edit (PATCH /api/auth/me).
-/my-trips — server: user's Bookings newest-first, grouped by date; show vehicle, pickup→dropoff,
+/my-requests — server: user's Bookings newest-first, grouped by date; show vehicle, pickup→dropoff,
 pickup time, price, paymentStatus + status pill. Reuse StatusPill + EmptyState.
 All protected pages redirect to /login when no session.
 
@@ -120,8 +120,37 @@ KASHIER_SECRET_KEY, KASHIER_API_KEY, KASHIER_MERCHANT_ID, KASHIER_MODE=test.
 1 Landing. 2 Auth. 3 Create form (single pickup time). 4 Map.
 5 Preview + Submit (POST /api/trips → Booking pending_payment, server totals).
 6 Payment (Kashier session create + redirect + /api/payments/webhook + /checkout/callback).
-7 Profile + My-trips.
+7 Profile + My-requests.
 
 ## START
 
 Wait for me to name a phase. Do that phase only, then STOP.
+
+# Commuter — modifications round 2 (build on existing phases 0-7)
+
+Stack same: Next.js 16.2.9, React 19, Tailwind v4, TS. Mongoose, jose, bcryptjs,
+Google Maps, Kashier REST, motion, lucide, date-fns. Brand: primary #0B1E3D,
+secondary #00C2A8, accent #F5A623. REUSE existing code. One phase only when named.
+
+## Domain model (no change)
+
+Booking = ONE date + trips[] + amountEgp + paymentStatus(pending|paid|failed|refunded)
+
+- status(pending_payment→submitted→...). "Request" = a Booking. "Trip" = one trips[] item.
+
+## What changes
+
+1. /my-requests stays = bookings list (per date, w/ status pills). ADD "Continue to
+   checkout" button on any booking with paymentStatus pending/failed → calls
+   /api/payments/session → redirect kashier sessionUrl. Reuse Phase-6 endpoint.
+2. NEW /my-trips = flat history: every trip from every booking, newest-first,
+   pickup→dropoff, vehicle, pickup/arrival time, price, date, parent paymentStatus.
+   Read-only logs. Reuse StatusPill + EmptyState.
+3. Fix Kashier: APP_URL must be absolute valid URL (http://localhost:3000 dev).
+   merchantRedirect + serverWebhook built from APP_URL. Guard: 500 if APP_URL unset.
+   Webhook unreachable on localhost — callback page reads booking from DB to show state.
+
+## Constraints
+
+Server recompute amount always. Auth-guard /my-requests /my-trips /profile server-side.
+Short confirmations. No new docs. Brand tokens only.

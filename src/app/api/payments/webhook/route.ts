@@ -32,16 +32,24 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Bad payload" }, { status: 400 });
   }
+  console.log("Kashier webhook body:", JSON.stringify(body));
+  const {
+    orderId,
+    merchantOrderId,
+    amount,
+    currency = "EGP",
+    status,
+    signature,
+  } = body;
+  const bookingId = merchantOrderId ?? orderId; // merchantOrderId = your booking _id
 
-  const { orderId, amount, currency = "EGP", status, signature } = body;
-
-  if (!orderId || !amount || !status) {
+  if (!bookingId || !amount || !status) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   // Validate signature — prevents spoofed webhook calls
-  if (signature && !verifySignature(orderId, amount, currency, signature)) {
-    console.warn("Kashier webhook: invalid signature for orderId", orderId);
+  if (signature && !verifySignature(bookingId, amount, currency, signature)) {
+    console.warn("Kashier webhook: invalid signature for orderId", bookingId);
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -52,12 +60,12 @@ export async function POST(req: NextRequest) {
   if (!paid) {
     // Record failure but still return 200 so Kashier doesn't retry
     await connectDB();
-    await Booking.findByIdAndUpdate(orderId, { paymentStatus: "failed" });
+    await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
     return NextResponse.json({ received: true });
   }
 
   await connectDB();
-  await Booking.findByIdAndUpdate(orderId, {
+  await Booking.findByIdAndUpdate(bookingId, {
     paymentStatus: "paid",
     status: "submitted",
     paidAt: new Date(),

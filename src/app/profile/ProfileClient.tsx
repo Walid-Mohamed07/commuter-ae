@@ -421,7 +421,7 @@ export default function ProfileClient({
           style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}
         >
           <Link
-            href="/my-trips"
+            href="/my-requests"
             style={{
               fontSize: 14,
               fontWeight: 600,
@@ -433,7 +433,7 @@ export default function ProfileClient({
               borderRadius: 10,
             }}
           >
-            My trips →
+            My requests →
           </Link>
           <Link
             href="/create"

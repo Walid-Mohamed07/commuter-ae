@@ -33,6 +33,7 @@ function defaultTrip(
     durationMinutes: null,
     priceEgp: null,
     routeCoordinates: null,
+    extraPassengers: 0,
   };
 }
 

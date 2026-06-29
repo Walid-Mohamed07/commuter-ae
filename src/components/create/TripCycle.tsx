@@ -18,6 +18,7 @@ export interface TripData {
   durationMinutes: number | null;
   priceEgp: number | null;
   routeCoordinates: [number, number][] | null;
+  extraPassengers: number;
 }
 
 interface Props {
@@ -26,6 +27,17 @@ interface Props {
   canRemove: boolean;
   onChange: (updated: TripData) => void;
   onRemove: () => void;
+}
+
+/** Generate 5 pickup-time options: computed+10, computed, computed-10, computed-20, computed-30 */
+function pickupOptions(computed: string): string[] {
+  if (!computed) return [];
+  const [h, m] = computed.split(":").map(Number);
+  const base = h * 60 + m;
+  return [10, 0, -10, -20, -30].map((offset) => {
+    const total = (((base + offset) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  });
 }
 
 /** Render "HH:MM" 24h as 12h am/pm */
@@ -138,6 +150,26 @@ export default function TripCycle({
     },
     [data, onChange],
   );
+
+  // Derive the computed base each render (for option generation)
+  const computedBase =
+    data.arrivalTime && data.durationMinutes
+      ? computePickupTime(
+          data.arrivalTime,
+          data.durationMinutes,
+          data.vehicleType,
+        )
+      : "";
+
+  // Use computedBase for options, data.pickupTime for selected value
+  {
+    pickupOptions(computedBase).map((opt) => (
+      <option key={opt} value={opt}>
+        {to12h(opt)}
+        {opt === computedBase ? " (recommended)" : ""}
+      </option>
+    ));
+  }
 
   return (
     <div
@@ -412,9 +444,10 @@ export default function TripCycle({
           </p>
         </div>
 
-        {/* Pickup time — read-only computed */}
+        {/* Pickup time — select with ±10min options around computed base */}
         <div>
           <label
+            htmlFor={`pickup-time-${data.id}`}
             style={{
               ...labelStyle,
               display: "flex",
@@ -425,29 +458,49 @@ export default function TripCycle({
             <Clock size={13} style={{ color: "#00C2A8" }} aria-hidden="true" />
             Pickup time
             <span
-              title="Computed: arrival minus drive duration minus vehicle buffer"
+              title="Computed from arrival − drive − buffer. You can depart earlier."
               style={{ cursor: "help", color: "#5A6A7A" }}
             >
               <Info size={12} aria-hidden="true" />
             </span>
           </label>
-          <div
-            style={readonlyStyle}
-            aria-label="Computed pickup time"
-            role="status"
-          >
-            {data.pickupTime ? (
-              <span
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: "#0B1E3D",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {to12h(data.pickupTime)}
-              </span>
-            ) : (
+          {data.pickupTime ? (
+            <select
+              id={`pickup-time-${data.id}`}
+              value={data.pickupTime}
+              onChange={(e) => set("pickupTime", e.target.value)}
+              style={{
+                width: "100%",
+                height: 52,
+                padding: "0 14px",
+                borderRadius: 12,
+                border: "1.5px solid #e8edf0",
+                background: "#f8f9fa",
+                fontSize: 15,
+                fontFamily: "inherit",
+                color: "#0B1E3D",
+                appearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6A7A' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 14px center",
+                paddingRight: 40,
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {pickupOptions(computedBase).map((opt) => (
+                <option key={opt} value={opt}>
+                  {to12h(opt)}
+                  {opt === computedBase ? " (recommended)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div
+              style={readonlyStyle}
+              aria-label="Computed pickup time"
+              role="status"
+            >
               <span style={{ fontSize: 14, color: "#9aa5b4" }}>
                 {!data.pickup || !data.dropoff
                   ? "Set pickup + dropoff first"
@@ -455,7 +508,85 @@ export default function TripCycle({
                     ? "Set arrival time above"
                     : "Calculating…"}
               </span>
-            )}
+            </div>
+          )}
+        </div>
+
+        {/* Extra passengers */}
+        <div>
+          <label style={labelStyle}>Extra passengers</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              onClick={() =>
+                set(
+                  "extraPassengers",
+                  Math.max(0, (data.extraPassengers ?? 0) - 1),
+                )
+              }
+              disabled={(data.extraPassengers ?? 0) <= 0}
+              aria-label="Decrease passengers"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: "1.5px solid #e8edf0",
+                background: "#f8f9fa",
+                cursor:
+                  (data.extraPassengers ?? 0) <= 0 ? "not-allowed" : "pointer",
+                fontSize: 20,
+                color: "#0B1E3D",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              −
+            </button>
+            <span
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: "#0B1E3D",
+                minWidth: 24,
+                textAlign: "center",
+              }}
+            >
+              {data.extraPassengers ?? 0}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                set(
+                  "extraPassengers",
+                  Math.min(3, (data.extraPassengers ?? 0) + 1),
+                )
+              }
+              disabled={(data.extraPassengers ?? 0) >= 3}
+              aria-label="Increase passengers"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: "1.5px solid #e8edf0",
+                background: "#f8f9fa",
+                cursor:
+                  (data.extraPassengers ?? 0) >= 3 ? "not-allowed" : "pointer",
+                fontSize: 20,
+                color: "#0B1E3D",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              +
+            </button>
+            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+              (you + {data.extraPassengers ?? 0} passenger
+              {(data.extraPassengers ?? 0) !== 1 ? "s" : ""})
+            </span>
           </div>
         </div>
       </div>

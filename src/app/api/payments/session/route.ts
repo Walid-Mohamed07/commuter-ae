@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const booking = await Booking.findOne({
     _id: bookingId,
     userId: new Types.ObjectId(session.userId),
-    paymentStatus: "pending",
+    paymentStatus: { $in: ["pending", "failed"] },
   });
 
   if (!booking)
@@ -48,17 +48,22 @@ export async function POST(req: NextRequest) {
   const expireAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
   const body = {
+    merchantOrderId: String(booking._id),
+    merchantId: process.env.KASHIER_MERCHANT_ID!,
     amount: String(booking.amountEgp),
     currency: "EGP",
-    orderId: String(booking._id),
-    merchantId: process.env.KASHIER_MERCHANT_ID!,
-    mode: process.env.KASHIER_MODE ?? "test",
+    // orderId: String(booking._id),
+    // mode: process.env.KASHIER_MODE ?? "test",
     paymentType: "credit",
     type: "one-time",
     maxFailureAttempts: 3,
     expireAt,
     display: "en",
     allowedMethods: "card,wallet",
+    customer: {
+      email: session.email,
+      reference: String(session.userId),
+    },
     merchantRedirect: `${appUrl}/checkout/callback?bookingId=${bookingId}`,
     serverWebhook: `${appUrl}/api/payments/webhook`,
   };
@@ -83,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   const kashierData = await kashierRes.json();
 
-  if (!kashierRes.ok || !kashierData?.body?.sessionUrl) {
+  if (!kashierRes.ok || !kashierData?.sessionUrl) {
     console.error("Kashier session error:", kashierData);
     return NextResponse.json(
       { error: "Payment gateway rejected the request." },
@@ -91,11 +96,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Persist the session ID so we can reconcile if needed
   await Booking.findByIdAndUpdate(bookingId, {
-    kashierSessionId: kashierData.body.sessionId ?? "",
+    kashierSessionId: kashierData._id ?? "",
     kashierOrderId: String(booking._id),
   });
 
-  return NextResponse.json({ sessionUrl: kashierData.body.sessionUrl });
+  return NextResponse.json({ sessionUrl: kashierData.sessionUrl });
 }

@@ -13,6 +13,7 @@ interface TripInput {
   arrivalTime: string;
   distanceKm: number;
   durationMinutes: number;
+  extraPassengers?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -100,6 +101,10 @@ export async function POST(req: NextRequest) {
       distanceKm: distKm,
       durationMinutes: Math.round(durMin),
       priceEgp,
+      extraPassengers: Math.min(
+        3,
+        Math.max(0, Math.round(Number(t.extraPassengers ?? 0))),
+      ),
     });
   }
 

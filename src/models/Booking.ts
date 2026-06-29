@@ -30,6 +30,7 @@ const TripSchema = new Schema(
     distanceKm: { type: Number, required: true },
     durationMinutes: { type: Number, required: true },
     priceEgp: { type: Number, required: true }, // server-recomputed
+    extraPassengers: { type: Number, default: 0, min: 0, max: 3 },
   },
   { _id: true },
 );
