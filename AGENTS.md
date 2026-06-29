@@ -1,4 +1,4 @@
-# Project: Commuter-AE — Uber-style ride booking (Cairo, Egypt)
+# Project: Commuter — Uber-style ride booking (Cairo, Egypt)
 
 Stack: Next.js 16.2.9 (App Router) + React 19 + Tailwind v4 + TypeScript.
 CRITICAL: This Next.js has breaking changes — follow AGENTS.md and consult the bundled

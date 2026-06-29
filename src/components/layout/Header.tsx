@@ -45,8 +45,13 @@ export default function Header() {
         {/* Logo */}
         <Link
           href="/"
-          aria-label="CommuterAE home"
-          style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 9 }}
+          aria-label="Commuter home"
+          style={{
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+          }}
         >
           <div
             style={{
@@ -60,9 +65,20 @@ export default function Header() {
               flexShrink: 0,
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 20 20"
+              fill="none"
+              aria-hidden="true"
+            >
               <circle cx="10" cy="10" r="4" fill="#0B1E3D" />
-              <path d="M10 2v2M10 16v2M2 10h2M16 10h2" stroke="#0B1E3D" strokeWidth="2" strokeLinecap="round" />
+              <path
+                d="M10 2v2M10 16v2M2 10h2M16 10h2"
+                stroke="#0B1E3D"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </div>
           <span
@@ -74,7 +90,7 @@ export default function Header() {
               transition: "color 0.25s",
             }}
           >
-            Commuter<span style={{ color: "#00C2A8" }}>AE</span>
+            Commuter
           </span>
         </Link>
 
@@ -95,8 +111,14 @@ export default function Header() {
               borderRadius: 8,
               transition: "color 0.2s, background 0.2s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = scrolled ? "#f0f4f8" : "rgba(255,255,255,0.12)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = scrolled
+                ? "#f0f4f8"
+                : "rgba(255,255,255,0.12)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
           >
             My trips
           </Link>

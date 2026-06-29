@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useId } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Eye, LogOut } from "lucide-react";
@@ -57,6 +57,7 @@ export default function CreateClient({ userEmail }: Props) {
   async function handleSubmit() {
     setSubmitting(true);
     setSubmitError("");
+    let navigating = false;
     try {
       const res = await fetch("/api/trips", {
         method: "POST",
@@ -80,12 +81,25 @@ export default function CreateClient({ userEmail }: Props) {
         );
         return;
       }
-      // Phase 6 will create the Kashier session here; for now redirect to callback
-      router.push(`/checkout/callback?bookingId=${data.bookingId}`);
+      const payRes = await fetch("/api/payments/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: data.bookingId }),
+      });
+      const payData = await payRes.json();
+      if (!payRes.ok) {
+        setSubmitError(
+          payData.error ?? "Failed to initiate payment. Please try again.",
+        );
+        return;
+      }
+      navigating = true;
+      // Full redirect (not router.push) so the browser leaves the SPA entirely
+      window.location.href = payData.sessionUrl;
     } catch {
       setSubmitError("Network error. Please check your connection and retry.");
     } finally {
-      setSubmitting(false);
+      if (!navigating) setSubmitting(false);
     }
   }
 
@@ -190,7 +204,7 @@ export default function CreateClient({ userEmail }: Props) {
               letterSpacing: "-0.025em",
             }}
           >
-            Commuter<span style={{ color: "#00C2A8" }}>AE</span>
+            Commuter
           </span>
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

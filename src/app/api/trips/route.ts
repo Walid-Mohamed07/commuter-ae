@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const vehicle = VEHICLES[vKey];
 
     // Server-side recompute — never trust client values
-    const rideType = vehicle.rideType;
+    const rideType = vehicle.ride;
     const pickupTime = computePickupTime(
       t.arrivalTime,
       Math.round(durMin),

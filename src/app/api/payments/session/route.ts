@@ -1,0 +1,101 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/session";
+import { connectDB } from "@/lib/db/mongoose";
+import { Booking } from "@/models/Booking";
+import { Types } from "mongoose";
+
+const KASHIER_URL =
+  process.env.KASHIER_MODE === "live"
+    ? "https://api.kashier.io/v3/payment/sessions"
+    : "https://test-api.kashier.io/v3/payment/sessions";
+
+export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let bookingId: string;
+  try {
+    ({ bookingId } = await req.json());
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  if (!bookingId || !Types.ObjectId.isValid(bookingId))
+    return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 });
+
+  await connectDB();
+
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    userId: new Types.ObjectId(session.userId),
+    paymentStatus: "pending",
+  });
+
+  if (!booking)
+    return NextResponse.json(
+      { error: "Booking not found or already paid." },
+      { status: 404 },
+    );
+
+  const appUrl = process.env.APP_URL;
+  if (!appUrl) {
+    return NextResponse.json(
+      { error: "APP_URL is not configured on the server." },
+      { status: 500 },
+    );
+  }
+  const expireAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+  const body = {
+    amount: String(booking.amountEgp),
+    currency: "EGP",
+    orderId: String(booking._id),
+    merchantId: process.env.KASHIER_MERCHANT_ID!,
+    mode: process.env.KASHIER_MODE ?? "test",
+    paymentType: "credit",
+    type: "one-time",
+    maxFailureAttempts: 3,
+    expireAt,
+    display: "en",
+    allowedMethods: "card,wallet",
+    merchantRedirect: `${appUrl}/checkout/callback?bookingId=${bookingId}`,
+    serverWebhook: `${appUrl}/api/payments/webhook`,
+  };
+
+  let kashierRes: Response;
+  try {
+    kashierRes = await fetch(KASHIER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: process.env.KASHIER_SECRET_KEY!,
+        "api-key": process.env.KASHIER_API_KEY!,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to reach payment gateway." },
+      { status: 502 },
+    );
+  }
+
+  const kashierData = await kashierRes.json();
+
+  if (!kashierRes.ok || !kashierData?.body?.sessionUrl) {
+    console.error("Kashier session error:", kashierData);
+    return NextResponse.json(
+      { error: "Payment gateway rejected the request." },
+      { status: 502 },
+    );
+  }
+
+  // Persist the session ID so we can reconcile if needed
+  await Booking.findByIdAndUpdate(bookingId, {
+    kashierSessionId: kashierData.body.sessionId ?? "",
+    kashierOrderId: String(booking._id),
+  });
+
+  return NextResponse.json({ sessionUrl: kashierData.body.sessionUrl });
+}

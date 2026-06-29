@@ -49,7 +49,7 @@ export default function Footer() {
           <div style={{ maxWidth: 280 }}>
             <Link
               href="/"
-              aria-label="CommuterAE home"
+              aria-label="Commuter home"
               style={{
                 textDecoration: "none",
                 display: "inline-flex",
@@ -93,7 +93,7 @@ export default function Footer() {
                   letterSpacing: "-0.025em",
                 }}
               >
-                Commuter<span style={{ color: "#00C2A8" }}>AE</span>
+                Commuter
               </span>
             </Link>
             <p style={{ fontSize: 14, margin: 0, lineHeight: 1.65 }}>
@@ -192,7 +192,7 @@ export default function Footer() {
           }}
         >
           <p style={{ fontSize: 13, margin: 0 }}>
-            © {year} CommuterAE. All rights reserved.
+            © {year} Commuter. All rights reserved.
           </p>
           <p style={{ fontSize: 13, margin: 0 }}>Built for Cairo 🇪🇬</p>
         </div>

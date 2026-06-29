@@ -34,7 +34,12 @@ export default function CTA() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.4 }}
-        style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", position: "relative" }}
+        style={{
+          maxWidth: 640,
+          margin: "0 auto",
+          textAlign: "center",
+          position: "relative",
+        }}
       >
         <p
           style={{
@@ -69,7 +74,7 @@ export default function CTA() {
           }}
         >
           Join thousands of Cairo commuters who save time and money every day
-          with CommuterAE.
+          with Commuter.
         </p>
 
         <div
@@ -96,10 +101,18 @@ export default function CTA() {
               minHeight: 52,
               transition: "opacity 0.2s, transform 0.1s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.88"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
-            onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.97)"; }}
-            onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "0.88";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "1";
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = "scale(0.97)";
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
           >
             Get started free
             <ArrowRight size={18} aria-hidden="true" />
@@ -121,8 +134,12 @@ export default function CTA() {
               minHeight: 52,
               transition: "background 0.2s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.15)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.15)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+            }}
           >
             Learn more
           </Link>

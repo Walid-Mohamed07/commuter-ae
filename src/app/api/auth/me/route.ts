@@ -3,6 +3,19 @@ import { connectDB } from "@/lib/db/mongoose";
 import { User } from "@/models/User";
 import { getSession } from "@/lib/auth/session";
 
+export async function GET() {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  await connectDB();
+  const user = await User.findById(session.userId)
+    .select("name email phone")
+    .lean();
+  if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  return NextResponse.json(user);
+}
+
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session)

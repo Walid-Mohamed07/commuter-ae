@@ -159,7 +159,7 @@ export default function LoginPage() {
                 letterSpacing: "-0.03em",
               }}
             >
-              Commuter<span style={{ color: "#00C2A8" }}>AE</span>
+              Commuter
             </span>
           </Link>
         </div>
