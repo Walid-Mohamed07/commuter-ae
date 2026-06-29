@@ -122,8 +122,8 @@ export default async function MyTripsPage() {
     .lean();
 
   // Serialise — strip ObjectId / Date to plain strings
-  const bookings: BookingRow[] = (raw as unknown[]).map(
-    (b: Record<string, unknown>) => ({
+  const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
+    (b) => ({
       id: String(b._id),
       date: b.date as string,
       amountEgp: b.amountEgp as number,
