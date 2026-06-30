@@ -2,7 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Phone, Mail, ArrowLeft, Check, Loader2 } from "lucide-react";
+import { User, Phone, Mail, Check, Loader2 } from "lucide-react";
+import AppHeader from "@/components/layout/AppHeader";
 
 interface Props {
   initialName: string;
@@ -54,49 +55,7 @@ export default function ProfileClient({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <header
-        style={{
-          height: 56,
-          background: "#0B1E3D",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 20px",
-          gap: 14,
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-          flexShrink: 0,
-        }}
-      >
-        <Link
-          href="/create"
-          aria-label="Back to booking"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            color: "rgba(255,255,255,0.75)",
-            background: "rgba(255,255,255,0.08)",
-            textDecoration: "none",
-            flexShrink: 0,
-          }}
-        >
-          <ArrowLeft size={18} aria-hidden="true" />
-        </Link>
-        <span
-          style={{
-            fontWeight: 900,
-            fontSize: 17,
-            color: "#fff",
-            letterSpacing: "-0.025em",
-          }}
-        >
-          Commuter
-        </span>
-      </header>
+      <AppHeader authed email={email} variant="app" backHref="/create" />
 
       <main
         style={{ maxWidth: 520, margin: "0 auto", padding: "32px 20px 48px" }}
