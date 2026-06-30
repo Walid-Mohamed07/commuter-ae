@@ -168,7 +168,11 @@ export default function CreateClient({ userEmail }: Props) {
     }
   }
 
-  const totalEgp = trips.reduce((sum, t) => sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0), 0);
+  const totalEgp = trips.reduce(
+    (sum, t) =>
+      sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0, t.vehicleType),
+    0,
+  );
 
   if (!mounted) {
     return (
@@ -578,7 +582,12 @@ export default function CreateClient({ userEmail }: Props) {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0)} EGP
+                      {finalPrice(
+                        t.priceEgp ?? 0,
+                        t.extraPassengers ?? 0,
+                        t.vehicleType,
+                      )}{" "}
+                      EGP
                     </span>
                   </div>
                   <div
@@ -731,7 +740,7 @@ export default function CreateClient({ userEmail }: Props) {
             overflow-y: visible !important; 
             flex-shrink: 0 !important;
           }
-          .create-right { margin: 0 !important; border-radius: 0 !important; height: 320px !important; flex-shrink: 0 !important; }
+          .create-right { flex: 1 1 100% !important; margin: 20px !important; border-radius: 20px !important; height: 320px !important; flex-shrink: 0 !important; }
           .email-desktop { display: none !important; }
         }
         @keyframes spin { to { transform: rotate(360deg); } }

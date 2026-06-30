@@ -76,7 +76,18 @@ export function maxExtraPassengers(key: VehicleKey): number {
  * Formula: round(basePrice * totalPeople * 1.05) when extraPassengers > 0,
  * else basePrice unchanged.
  */
-export function finalPrice(basePrice: number, extraPassengers: number): number {
-  if (!extraPassengers || extraPassengers <= 0) return basePrice;
-  return Math.round(basePrice * (extraPassengers + 1) * 0.95);
+export function finalPrice(
+  basePrice: number,
+  extraPassengers: number,
+  vehicleType: VehicleKey,
+): number {
+  if (
+    vehicleType === "taxi_shared" ||
+    vehicleType === "van_shared" ||
+    vehicleType === "microbus_shared"
+  ) {
+    if (!extraPassengers || extraPassengers <= 0) return basePrice;
+    return Math.round(basePrice * (extraPassengers + 1) * 0.95);
+  }
+  return basePrice;
 }

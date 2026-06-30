@@ -2,7 +2,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, Clock, MapPin, Navigation, Info } from "lucide-react";
 import AddressInput from "@/components/landing/AddressInput";
-import { VEHICLE_LIST, priceFor, maxExtraPassengers, finalPrice, type VehicleKey } from "@/lib/config/vehicles";
+import {
+  VEHICLE_LIST,
+  priceFor,
+  maxExtraPassengers,
+  finalPrice,
+  type VehicleKey,
+} from "@/lib/config/vehicles";
 import { computePickupTime, toHHMM } from "@/lib/time/pickupWindow";
 import { fetchRoute } from "@/lib/openrouteservice";
 import type { TripPoint } from "@/lib/store/useTripStore";
@@ -227,7 +233,12 @@ export default function TripCycle({
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {finalPrice(data.priceEgp, data.extraPassengers ?? 0)} EGP
+            {finalPrice(
+              data.priceEgp,
+              data.extraPassengers ?? 0,
+              data.vehicleType,
+            )}{" "}
+            EGP
           </span>
         )}
         {canRemove && (
@@ -401,8 +412,15 @@ export default function TripCycle({
             onChange={(e) => {
               const newVehicle = e.target.value as VehicleKey;
               const newMax = maxExtraPassengers(newVehicle);
-              const clampedPassengers = Math.min(data.extraPassengers ?? 0, newMax);
-              onChange({ ...data, vehicleType: newVehicle, extraPassengers: clampedPassengers });
+              const clampedPassengers = Math.min(
+                data.extraPassengers ?? 0,
+                newMax,
+              );
+              onChange({
+                ...data,
+                vehicleType: newVehicle,
+                extraPassengers: clampedPassengers,
+              });
             }}
             style={{
               width: "100%",
@@ -607,10 +625,16 @@ export default function TripCycle({
               onClick={() =>
                 set(
                   "extraPassengers",
-                  Math.min(maxExtraPassengers(data.vehicleType), (data.extraPassengers ?? 0) + 1),
+                  Math.min(
+                    maxExtraPassengers(data.vehicleType),
+                    (data.extraPassengers ?? 0) + 1,
+                  ),
                 )
               }
-              disabled={(data.extraPassengers ?? 0) >= maxExtraPassengers(data.vehicleType)}
+              disabled={
+                (data.extraPassengers ?? 0) >=
+                maxExtraPassengers(data.vehicleType)
+              }
               aria-label="Increase passengers"
               style={{
                 width: 40,
@@ -619,7 +643,10 @@ export default function TripCycle({
                 border: "1.5px solid #e8edf0",
                 background: "#f8f9fa",
                 cursor:
-                  (data.extraPassengers ?? 0) >= maxExtraPassengers(data.vehicleType) ? "not-allowed" : "pointer",
+                  (data.extraPassengers ?? 0) >=
+                  maxExtraPassengers(data.vehicleType)
+                    ? "not-allowed"
+                    : "pointer",
                 fontSize: 20,
                 color: "#0B1E3D",
                 fontFamily: "inherit",
