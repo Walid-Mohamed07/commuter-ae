@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
-import { VEHICLES, priceFor } from "@/lib/config/vehicles";
+import { VEHICLES, priceFor, maxExtraPassengers, finalPrice } from "@/lib/config/vehicles";
 import { computePickupTime } from "@/lib/time/pickupWindow";
 import { Types } from "mongoose";
 
@@ -81,7 +81,12 @@ export async function POST(req: NextRequest) {
       Math.round(durMin),
       vKey,
     );
-    const priceEgp = priceFor(distKm, vKey);
+    const basePrice = priceFor(distKm, vKey);
+    const extraPax = Math.min(
+      maxExtraPassengers(vKey),
+      Math.max(0, Math.round(Number(t.extraPassengers ?? 0))),
+    );
+    const priceEgp = finalPrice(basePrice, extraPax);
 
     serverTrips.push({
       pickup: {
@@ -101,10 +106,7 @@ export async function POST(req: NextRequest) {
       distanceKm: distKm,
       durationMinutes: Math.round(durMin),
       priceEgp,
-      extraPassengers: Math.min(
-        3,
-        Math.max(0, Math.round(Number(t.extraPassengers ?? 0))),
-      ),
+      extraPassengers: extraPax,
     });
   }
 

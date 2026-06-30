@@ -47,6 +47,10 @@ export default function CreateClient({ userEmail }: Props) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [picking, setPicking] = useState<{
+    tripId: string;
+    field: "pickup" | "dropoff";
+  } | null>(null);
 
   // Hydrate from store after mount (avoid SSR mismatch)
   useEffect(() => {
@@ -54,6 +58,19 @@ export default function CreateClient({ userEmail }: Props) {
     setTrips([defaultTrip(pickup, dropoff)]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleMapPick = useCallback(
+    (point: TripPoint) => {
+      if (!picking) return;
+      setTrips((prev) =>
+        prev.map((t) =>
+          t.id === picking.tripId ? { ...t, [picking.field]: point } : t,
+        ),
+      );
+      setPicking(null);
+    },
+    [picking],
+  );
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -151,7 +168,7 @@ export default function CreateClient({ userEmail }: Props) {
     }
   }
 
-  const totalEgp = trips.reduce((sum, t) => sum + (t.priceEgp ?? 0), 0);
+  const totalEgp = trips.reduce((sum, t) => sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0), 0);
 
   if (!mounted) {
     return (
@@ -308,12 +325,16 @@ export default function CreateClient({ userEmail }: Props) {
                   canRemove={trips.length > 1}
                   onChange={(updated) => updateTrip(trip.id, updated)}
                   onRemove={() => removeTrip(trip.id)}
+                  picking={picking?.tripId === trip.id ? picking.field : null}
+                  onPickFromMap={(field) =>
+                    setPicking({ tripId: trip.id, field })
+                  }
                 />
               ))}
             </div>
 
             {/* Add trip */}
-            {trips.length < 5 && (
+            {trips.length < 3 && (
               <button
                 type="button"
                 onClick={addTrip}
@@ -438,7 +459,11 @@ export default function CreateClient({ userEmail }: Props) {
           aria-label="Map area"
           className="create-right"
         >
-          <CreateMap trips={trips} />
+          <CreateMap
+            trips={trips}
+            picking={picking}
+            onMapPick={handleMapPick}
+          />
         </main>
       </div>
 
@@ -553,7 +578,7 @@ export default function CreateClient({ userEmail }: Props) {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {t.priceEgp} EGP
+                      {finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0)} EGP
                     </span>
                   </div>
                   <div
@@ -696,9 +721,17 @@ export default function CreateClient({ userEmail }: Props) {
       <style>{`
         .email-desktop { display: block; }
         @media (max-width: 767px) {
-          .create-layout { flex-direction: column !important; overflow: visible !important; }
-          .create-left { width: 100% !important; border-right: none !important; border-bottom: 1px solid #eef0f3 !important; overflow-y: visible !important; }
-          .create-right { display: none !important; }
+          .create-layout { flex-direction: column !important; overflow-y: auto !important; overflow-x: hidden !important; }
+          .create-left { 
+            width: 100% !important; 
+            margin: 0 !important; 
+            border: none !important; 
+            border-radius: 0 !important; 
+            border-bottom: 1px solid #eef0f3 !important; 
+            overflow-y: visible !important; 
+            flex-shrink: 0 !important;
+          }
+          .create-right { margin: 0 !important; border-radius: 0 !important; height: 320px !important; flex-shrink: 0 !important; }
           .email-desktop { display: none !important; }
         }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -708,7 +741,7 @@ export default function CreateClient({ userEmail }: Props) {
 }
 
 /* ── Helpers local to this file ── */
-import { VEHICLE_LIST } from "@/lib/config/vehicles";
+import { VEHICLE_LIST, finalPrice } from "@/lib/config/vehicles";
 import { formatDisplayName } from "@/lib/nominatim";
 
 function VEHICLE_LIST_LABEL(key: string) {

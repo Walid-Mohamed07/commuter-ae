@@ -1,13 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  GoogleMap,
-  useJsApiLoader,
-  Marker,
-  Polyline,
-} from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
 import { MAP_STYLE } from "@/lib/googleMapsStyle";
 import type { TripData } from "./TripCycle";
+import { reverseGeocode, formatDisplayName } from "@/lib/nominatim";
+import type { TripPoint } from "@/lib/store/useTripStore";
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const CAIRO = { lat: 30.0444, lng: 31.2357 };
@@ -30,15 +27,19 @@ const DEST_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
 
 interface Props {
   trips: TripData[];
+  picking?: { tripId: string; field: "pickup" | "dropoff" } | null;
+  onMapPick?: (point: TripPoint) => void;
 }
 
-export default function CreateMap({ trips }: Props) {
+export default function CreateMap({ trips, picking, onMapPick }: Props) {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script", // shared with LocationPickerMap
     googleMapsApiKey: API_KEY,
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
+const polylinesRef = useRef<google.maps.Polyline[]>([]);
+const [mapReady, setMapReady] = useState(false);
   const zonesLoadedRef = useRef(false);
   const [zoom, setZoom] = useState(11);
 
@@ -73,7 +74,7 @@ export default function CreateMap({ trips }: Props) {
 
   const onLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
-
+setMapReady(true);
     if (zonesLoadedRef.current) return; // prevents double-add on remount
     zonesLoadedRef.current = true;
 
@@ -115,6 +116,53 @@ export default function CreateMap({ trips }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(allPoints)]);
 
+  // Draw routes imperatively — wipe + redraw on every change (no ghost lines)
+useEffect(() => {
+  if (!mapRef.current) return;
+  const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
+
+  // clear previous
+  polylinesRef.current.forEach((p) => p.setMap(null));
+  polylinesRef.current = [];
+
+  trips.forEach((t, i) => {
+    if (!t.routeCoordinates || t.routeCoordinates.length < 2) return;
+    const path = t.routeCoordinates.map(([lat, lng]) => ({ lat, lng }));
+    const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+    const glow = new google.maps.Polyline({
+      path, strokeColor: color, strokeOpacity: 0.15, strokeWeight: 14, zIndex: 1,
+      map: mapRef.current!,
+    });
+    const main = new google.maps.Polyline({
+      path, strokeColor: color, strokeOpacity: 0.9, strokeWeight: 5, zIndex: 2,
+      map: mapRef.current!,
+    });
+    polylinesRef.current.push(glow, main);
+  });
+
+  return () => {
+    polylinesRef.current.forEach((p) => p.setMap(null));
+    polylinesRef.current = [];
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [JSON.stringify(trips.map((t) => t.routeCoordinates)), mapReady]);
+
+  const handleMapClick = useCallback(
+    async (e: google.maps.MapMouseEvent) => {
+      if (!picking || !onMapPick || !e.latLng) return;
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      let address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      try {
+        const addr = await reverseGeocode(lat, lng);
+        const f = formatDisplayName(addr);
+        if (f) address = f;
+      } catch {}
+      onMapPick({ address, lat, lng });
+    },
+    [picking, onMapPick],
+  );
+
   function handleZoom(delta: number) {
     if (!mapRef.current) return;
     const z = mapRef.current.getZoom() ?? zoom;
@@ -150,9 +198,6 @@ export default function CreateMap({ trips }: Props) {
     );
   }
 
-  // Palette per trip (cycle through 3 route colours)
-  const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
-
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <GoogleMap
@@ -163,11 +208,13 @@ export default function CreateMap({ trips }: Props) {
         onZoomChanged={() => {
           if (mapRef.current) setZoom(mapRef.current.getZoom() ?? 11);
         }}
+        onClick={handleMapClick}
         options={{
           styles: MAP_STYLE,
           disableDefaultUI: true,
           gestureHandling: "greedy",
           clickableIcons: false,
+          draggableCursor: picking ? "crosshair" : undefined,
         }}
       >
         {zoneLabels.map((z) => (
@@ -190,42 +237,8 @@ export default function CreateMap({ trips }: Props) {
         ))}
 
         {trips.map((t, i) => {
-          const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
-
           return (
             <span key={t.id}>
-              {/* Route polyline */}
-              {t.routeCoordinates && t.routeCoordinates.length > 1 && (
-                <>
-                  {/* Outer glow */}
-                  <Polyline
-                    path={t.routeCoordinates.map(([lat, lng]) => ({
-                      lat,
-                      lng,
-                    }))}
-                    options={{
-                      strokeColor: color,
-                      strokeOpacity: 0.15,
-                      strokeWeight: 14,
-                      zIndex: 1,
-                    }}
-                  />
-                  {/* Main line */}
-                  <Polyline
-                    path={t.routeCoordinates.map(([lat, lng]) => ({
-                      lat,
-                      lng,
-                    }))}
-                    options={{
-                      strokeColor: color,
-                      strokeOpacity: 0.9,
-                      strokeWeight: 5,
-                      zIndex: 2,
-                    }}
-                  />
-                </>
-              )}
-
               {/* Origin marker */}
               {t.pickup && (
                 <Marker
@@ -257,6 +270,29 @@ export default function CreateMap({ trips }: Props) {
           );
         })}
       </GoogleMap>
+
+      {/* Picking banner */}
+      {picking && (
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 20,
+            background: "rgba(11,30,61,0.9)",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            padding: "8px 16px",
+            borderRadius: 20,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Click the map to set {picking.field}
+        </div>
+      )}
 
       {/* Route badge — show for the first trip that has a route */}
       {(() => {

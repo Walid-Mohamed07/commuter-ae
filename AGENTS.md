@@ -35,12 +35,12 @@ On submit: store pickup+dropoff in a Zustand store (persisted to sessionStorage)
 
 ## Constants (already created — import, don't redefine)
 
-- src/lib/config/vehicles.ts → VEHICLES, VEHICLE_LIST, MIN_FARE=20, priceFor()
+- src/lib/config/vehicles.ts → VEHICLES, VEHICLE_LIST, priceFor()
 - src/lib/time/pickupWindow.ts → computePickupTime(), toMinutes/toHHMM
   Vehicle rates & timing (buffer minutes; window now unused):
   private_car 15 private buffer 20 | taxi_private 12 private buffer 20
   taxi_shared 9 shared buffer 30 | van_shared 7 shared buffer 45 | microbus_shared 5 shared buffer 45
-  Price per trip = max(MIN_FARE, round(distance_km \* rate)). Booking amount = sum of trip prices.
+  Price per trip = round(distance_km \* rate). Booking amount = sum of trip prices.
   Times "HH:MM" 24h internally, render 12h. Dates "YYYY-MM-DD".
 
 ## State
