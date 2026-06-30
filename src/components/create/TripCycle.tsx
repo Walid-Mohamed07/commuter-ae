@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, Clock, MapPin, Navigation, Info } from "lucide-react";
 import AddressInput from "@/components/landing/AddressInput";
-import { VEHICLE_LIST, priceFor, type VehicleKey } from "@/lib/config/vehicles";
+import { VEHICLE_LIST, priceFor, maxExtraPassengers, finalPrice, type VehicleKey } from "@/lib/config/vehicles";
 import { computePickupTime, toHHMM } from "@/lib/time/pickupWindow";
 import { fetchRoute } from "@/lib/openrouteservice";
 import type { TripPoint } from "@/lib/store/useTripStore";
@@ -27,6 +27,26 @@ interface Props {
   canRemove: boolean;
   onChange: (updated: TripData) => void;
   onRemove: () => void;
+  picking?: "pickup" | "dropoff" | null;
+  onPickFromMap?: (field: "pickup" | "dropoff") => void;
+}
+
+function pickBtnStyle(active: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+    padding: "6px 10px",
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    border: `1.5px solid ${active ? "#00C2A8" : "#e8edf0"}`,
+    background: active ? "rgba(0,194,168,0.1)" : "#f8f9fa",
+    color: active ? "#00897B" : "#5A6A7A",
+  };
 }
 
 /** Generate 5 pickup-time options: computed+10, computed, computed-10, computed-20, computed-30 */
@@ -75,6 +95,8 @@ export default function TripCycle({
   canRemove,
   onChange,
   onRemove,
+  picking,
+  onPickFromMap,
 }: Props) {
   const [routeLoading, setRouteLoading] = useState(false);
 
@@ -205,7 +227,7 @@ export default function TripCycle({
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {data.priceEgp} EGP
+            {finalPrice(data.priceEgp, data.extraPassengers ?? 0)} EGP
           </span>
         )}
         {canRemove && (
@@ -272,6 +294,16 @@ export default function TripCycle({
             onChange={(p) => set("pickup", p)}
             iconColor="#0B1E3D"
           />
+          {onPickFromMap && (
+            <button
+              type="button"
+              onClick={() => onPickFromMap("pickup")}
+              style={pickBtnStyle(picking === "pickup")}
+            >
+              <MapPin size={13} aria-hidden="true" />
+              {picking === "pickup" ? "Click the map…" : "Pick from map"}
+            </button>
+          )}
         </div>
 
         {/* Dropoff */}
@@ -296,6 +328,16 @@ export default function TripCycle({
             onChange={(p) => set("dropoff", p)}
             iconColor="#00C2A8"
           />
+          {onPickFromMap && (
+            <button
+              type="button"
+              onClick={() => onPickFromMap("dropoff")}
+              style={pickBtnStyle(picking === "dropoff")}
+            >
+              <MapPin size={13} aria-hidden="true" />
+              {picking === "dropoff" ? "Click the map…" : "Pick from map"}
+            </button>
+          )}
         </div>
 
         {/* Route info pill */}
@@ -356,7 +398,12 @@ export default function TripCycle({
           <select
             id={`vehicle-${data.id}`}
             value={data.vehicleType}
-            onChange={(e) => set("vehicleType", e.target.value as VehicleKey)}
+            onChange={(e) => {
+              const newVehicle = e.target.value as VehicleKey;
+              const newMax = maxExtraPassengers(newVehicle);
+              const clampedPassengers = Math.min(data.extraPassengers ?? 0, newMax);
+              onChange({ ...data, vehicleType: newVehicle, extraPassengers: clampedPassengers });
+            }}
             style={{
               width: "100%",
               height: 52,
@@ -388,7 +435,7 @@ export default function TripCycle({
           >
             {VEHICLE_LIST.map((v) => (
               <option key={v.key} value={v.key}>
-                {v.label} — {v.rate} EGP/km
+                {v.label}
               </option>
             ))}
           </select>
@@ -560,10 +607,10 @@ export default function TripCycle({
               onClick={() =>
                 set(
                   "extraPassengers",
-                  Math.min(3, (data.extraPassengers ?? 0) + 1),
+                  Math.min(maxExtraPassengers(data.vehicleType), (data.extraPassengers ?? 0) + 1),
                 )
               }
-              disabled={(data.extraPassengers ?? 0) >= 3}
+              disabled={(data.extraPassengers ?? 0) >= maxExtraPassengers(data.vehicleType)}
               aria-label="Increase passengers"
               style={{
                 width: 40,
@@ -572,7 +619,7 @@ export default function TripCycle({
                 border: "1.5px solid #e8edf0",
                 background: "#f8f9fa",
                 cursor:
-                  (data.extraPassengers ?? 0) >= 3 ? "not-allowed" : "pointer",
+                  (data.extraPassengers ?? 0) >= maxExtraPassengers(data.vehicleType) ? "not-allowed" : "pointer",
                 fontSize: 20,
                 color: "#0B1E3D",
                 fontFamily: "inherit",

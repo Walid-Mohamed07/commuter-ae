@@ -1,10 +1,17 @@
 "use client";
 import { motion } from "motion/react";
 import { Car, CarFront, Users, Truck, Bus } from "lucide-react";
-import { VEHICLE_LIST, MIN_FARE } from "@/lib/config/vehicles";
+import { VEHICLE_LIST } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 
-const ICONS: Record<VehicleKey, React.ComponentType<{ size?: number; style?: React.CSSProperties; "aria-hidden"?: boolean }>> = {
+const ICONS: Record<
+  VehicleKey,
+  React.ComponentType<{
+    size?: number;
+    style?: React.CSSProperties;
+    "aria-hidden"?: boolean;
+  }>
+> = {
   private_car: Car,
   taxi_private: CarFront,
   taxi_shared: Users,
@@ -13,10 +20,10 @@ const ICONS: Record<VehicleKey, React.ComponentType<{ size?: number; style?: Rea
 };
 
 const PALETTE: Record<VehicleKey, { color: string; bg: string }> = {
-  private_car:     { color: "#0B1E3D", bg: "rgba(11,30,61,0.07)" },
-  taxi_private:    { color: "#1C3557", bg: "rgba(28,53,87,0.07)" },
-  taxi_shared:     { color: "#00C2A8", bg: "rgba(0,194,168,0.09)" },
-  van_shared:      { color: "#F5A623", bg: "rgba(245,166,35,0.10)" },
+  private_car: { color: "#0B1E3D", bg: "rgba(11,30,61,0.07)" },
+  taxi_private: { color: "#1C3557", bg: "rgba(28,53,87,0.07)" },
+  taxi_shared: { color: "#00C2A8", bg: "rgba(0,194,168,0.09)" },
+  van_shared: { color: "#F5A623", bg: "rgba(245,166,35,0.10)" },
   microbus_shared: { color: "#5A6A7A", bg: "rgba(90,106,122,0.08)" },
 };
 
@@ -59,13 +66,18 @@ export default function VehicleTypes() {
           >
             Find the right ride
           </h2>
-          <p style={{ fontSize: 16, color: "#5A6A7A", margin: 0 }}>
-            Transparent per-km pricing. Minimum fare {MIN_FARE} EGP on every ride.
-          </p>
+          {/* <p style={{ fontSize: 16, color: "#5A6A7A", margin: 0 }}>
+            Transparent per-km pricing. Minimum fare {MIN_FARE} EGP on every
+            ride.
+          </p> */}
         </motion.div>
 
         <div
-          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 22 }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 22,
+          }}
           className="vehicles-grid"
         >
           {VEHICLE_LIST.map((v, i) => {
@@ -78,7 +90,10 @@ export default function VehicleTypes() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.35, delay: i * 0.07 }}
-                whileHover={{ y: -5, boxShadow: "0 16px 48px rgba(11,30,61,0.11)" }}
+                whileHover={{
+                  y: -5,
+                  boxShadow: "0 16px 48px rgba(11,30,61,0.11)",
+                }}
                 style={{
                   background: "#ffffff",
                   borderRadius: 16,
@@ -150,7 +165,14 @@ export default function VehicleTypes() {
                     >
                       {v.rate}
                     </span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color, opacity: 0.75 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color,
+                        opacity: 0.75,
+                      }}
+                    >
                       EGP / km
                     </span>
                   </div>
