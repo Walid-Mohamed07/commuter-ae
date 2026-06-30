@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import Image from "next/image";
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -53,7 +54,7 @@ export default function Header() {
             gap: 9,
           }}
         >
-          <div
+          {/* <div
             style={{
               width: 36,
               height: 36,
@@ -80,7 +81,13 @@ export default function Header() {
                 strokeLinecap="round"
               />
             </svg>
-          </div>
+          </div> */}
+          <Image
+            src="/assets/images/commuterLogo.png"
+            alt="Commuter logo"
+            width={36}
+            height={36}
+          />
           <span
             style={{
               fontWeight: 800,

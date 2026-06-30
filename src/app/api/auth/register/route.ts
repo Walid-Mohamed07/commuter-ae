@@ -8,9 +8,9 @@ export async function POST(req: NextRequest) {
   try {
     const { name, email, password, phone } = await req.json();
 
-    if (!name?.trim() || !email?.trim() || !password)
+    if (!name?.trim() || !phone?.trim() || !password)
       return NextResponse.json(
-        { error: "Name, email and password are required." },
+        { error: "Name, phone and password are required." },
         { status: 400 },
       );
     if (password.length < 8)
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
         { error: "Password must be at least 8 characters." },
         { status: 400 },
       );
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    if (email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return NextResponse.json(
         { error: "Invalid email address." },
         { status: 400 },
@@ -27,23 +27,34 @@ export async function POST(req: NextRequest) {
     await connectDB();
 
     const existing = await User.findOne({
-      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
     }).lean();
     if (existing)
       return NextResponse.json(
-        { error: "An account with this email already exists." },
+        { error: "An account with this phone number already exists." },
         { status: 409 },
       );
+
+    if (email?.trim()) {
+      const existingEmail = await User.findOne({
+        email: email.toLowerCase().trim(),
+      }).lean();
+      if (existingEmail)
+        return NextResponse.json(
+          { error: "An account with this email already exists." },
+          { status: 409 },
+        );
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await User.create({
       name: name.trim(),
-      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
       passwordHash,
-      phone: phone?.trim() || undefined,
+      email: email?.trim() ? email.toLowerCase().trim() : undefined,
     });
 
-    await createSession({ userId: String(user._id), email: user.email });
+    await createSession({ userId: String(user._id), email: user.email ?? "" });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json(

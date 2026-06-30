@@ -6,31 +6,31 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    const { phone, password } = await req.json();
 
-    if (!email?.trim() || !password)
+    if (!phone?.trim() || !password)
       return NextResponse.json(
-        { error: "Email and password are required." },
+        { error: "Phone and password are required." },
         { status: 400 },
       );
 
     await connectDB();
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await User.findOne({ phone: phone.trim() });
     if (!user)
       return NextResponse.json(
-        { error: "Invalid email or password." },
+        { error: "Invalid phone or password." },
         { status: 401 },
       );
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid)
       return NextResponse.json(
-        { error: "Invalid email or password." },
+        { error: "Invalid phone or password." },
         { status: 401 },
       );
 
-    await createSession({ userId: String(user._id), email: user.email });
+    await createSession({ userId: String(user._id), email: user.email ?? "" });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

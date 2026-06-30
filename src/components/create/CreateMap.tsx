@@ -39,10 +39,55 @@ export default function CreateMap({ trips }: Props) {
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
+  const zonesLoadedRef = useRef(false);
   const [zoom, setZoom] = useState(11);
+
+  interface ZoneLabel {
+    id: string;
+    no: number;
+    lat: number;
+    lng: number;
+  }
+
+  const [zoneLabels, setZoneLabels] = useState<ZoneLabel[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/geo/zone_centroid.geojson")
+      .then((r) => r.json())
+      .then((fc) => {
+        if (cancelled) return;
+        const labels: ZoneLabel[] = fc.features.map((f: any) => ({
+          id: String(f.id),
+          no: f.properties?.NO ?? 0,
+          lat: f.geometry.coordinates[1], // GeoJSON = [lng, lat]
+          lng: f.geometry.coordinates[0],
+        }));
+        setZoneLabels(labels);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
+
+    if (zonesLoadedRef.current) return; // prevents double-add on remount
+    zonesLoadedRef.current = true;
+
+    // Zone polygons → built-in Data layer
+    map.data.loadGeoJson("/geo/zone_polygon.geojson");
+    map.data.setStyle({
+      fillColor: "rgb(10, 0, 168)",
+      fillOpacity: 0.08,
+      strokeColor: "rgba(255, 0, 168, 1)",
+      strokeWeight: 1.2,
+      strokeOpacity: 0.6,
+      clickable: false, // skip hit-testing → better perf
+      zIndex: 0, // keep zones beneath your routes/markers
+    });
   }, []);
 
   // Collect all route points across all trips
@@ -125,6 +170,25 @@ export default function CreateMap({ trips }: Props) {
           clickableIcons: false,
         }}
       >
+        {zoneLabels.map((z) => (
+          <Marker
+            key={`zone-${z.id}`}
+            position={{ lat: z.lat, lng: z.lng }}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 0, // invisible marker, label only
+            }}
+            label={{
+              text: z.no ? `Zone ${z.no}` : z.id,
+              color: "#0B1E3D",
+              fontSize: "11px",
+              fontWeight: "600",
+            }}
+            clickable={false}
+            zIndex={1}
+          />
+        ))}
+
         {trips.map((t, i) => {
           const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
 

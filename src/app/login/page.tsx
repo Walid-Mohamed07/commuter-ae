@@ -45,8 +45,8 @@ function LoginForm() {
       const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
       const body =
         mode === "login"
-          ? { email, password }
-          : { name, email, password, phone };
+          ? { phone, password }
+          : { name, phone, password, email };
 
       const res = await fetch(url, {
         method: "POST",
@@ -253,10 +253,10 @@ function LoginForm() {
               </div>
             )}
 
-            {/* Email */}
+            {/* Phone (primary) */}
             <div>
               <label
-                htmlFor="email"
+                htmlFor="phone"
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
@@ -265,7 +265,7 @@ function LoginForm() {
                   marginBottom: 6,
                 }}
               >
-                Email address{" "}
+                Phone{" "}
                 <span aria-hidden="true" style={{ color: "#e74c3c" }}>
                   *
                 </span>
@@ -279,17 +279,17 @@ function LoginForm() {
                   blurField(e.currentTarget as HTMLDivElement)
                 }
               >
-                <Mail
+                <Phone
                   size={17}
                   style={{ color: "#5A6A7A", flexShrink: 0 }}
                   aria-hidden="true"
                 />
                 <input
-                  ref={emailRef}
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
+                  ref={phoneRef}
+                  id="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  placeholder="+20 10 0000 0000"
                   required
                   style={inputStyle}
                 />
@@ -376,11 +376,11 @@ function LoginForm() {
               )}
             </div>
 
-            {/* Phone (register only, optional) */}
+            {/* Email (register only, optional, last) */}
             {mode === "register" && (
               <div>
                 <label
-                  htmlFor="phone"
+                  htmlFor="email"
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
@@ -389,7 +389,7 @@ function LoginForm() {
                     marginBottom: 6,
                   }}
                 >
-                  Phone{" "}
+                  Email address{" "}
                   <span style={{ fontWeight: 400, color: "#5A6A7A" }}>
                     (optional)
                   </span>
@@ -403,17 +403,17 @@ function LoginForm() {
                     blurField(e.currentTarget as HTMLDivElement)
                   }
                 >
-                  <Phone
+                  <Mail
                     size={17}
                     style={{ color: "#5A6A7A", flexShrink: 0 }}
                     aria-hidden="true"
                   />
                   <input
-                    ref={phoneRef}
-                    id="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="+20 10 0000 0000"
+                    ref={emailRef}
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
                     style={inputStyle}
                   />
                 </div>
