@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
-import { VEHICLES, priceFor, maxExtraPassengers, finalPrice } from "@/lib/config/vehicles";
+import {
+  VEHICLES,
+  priceFor,
+  maxExtraPassengers,
+  finalPrice,
+} from "@/lib/config/vehicles";
 import { computePickupTime } from "@/lib/time/pickupWindow";
 import { Types } from "mongoose";
 
@@ -86,7 +91,7 @@ export async function POST(req: NextRequest) {
       maxExtraPassengers(vKey),
       Math.max(0, Math.round(Number(t.extraPassengers ?? 0))),
     );
-    const priceEgp = finalPrice(basePrice, extraPax);
+    const priceEgp = finalPrice(basePrice, extraPax, vKey);
 
     serverTrips.push({
       pickup: {
