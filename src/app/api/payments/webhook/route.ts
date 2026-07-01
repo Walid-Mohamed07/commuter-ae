@@ -2,23 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
+import { WalletTransaction } from "@/models/WalletTransaction";
+import { verifyAndSettleTopup } from "@/lib/payments/kashier";
+import { Types } from "mongoose";
 
-// Kashier sends webhook with a `signature` field in the JSON body.
-// Signature = HMAC-SHA256(orderId + amount + currency, KASHIER_API_KEY)
-// Adjust the signing payload if your Kashier version differs.
-function verifySignature(
-  orderId: string,
-  amount: string,
-  currency: string,
-  receivedSig: string,
-): boolean {
-  const secret = process.env.KASHIER_API_KEY!;
-  const payload = `${orderId}${amount}${currency}`;
-  const expected = createHmac("sha256", secret).update(payload).digest("hex");
+function verifySignature(p: Record<string, string>, sig: string): boolean {
+  const secret = process.env.KASHIER_SECRET_KEY!;
+  const data = `${p.merchantId}${p.orderId}${p.transactionId}${p.amount}${p.currency}${p.paymentStatus}`;
+  const expected = createHmac("sha256", secret).update(data).digest("hex");
   try {
     return timingSafeEqual(
       Buffer.from(expected, "hex"),
-      Buffer.from(receivedSig, "hex"),
+      Buffer.from(sig, "hex"),
     );
   } catch {
     return false;
@@ -32,44 +27,53 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Bad payload" }, { status: 400 });
   }
-  console.log("Kashier webhook body:", JSON.stringify(body));
-  const {
-    orderId,
-    merchantOrderId,
-    amount,
-    currency = "EGP",
-    status,
-    signature,
-  } = body;
-  const bookingId = merchantOrderId ?? orderId; // merchantOrderId = your booking _id
 
-  if (!bookingId || !amount || !status) {
+  const bookingId = body.merchantOrderId ?? body.orderId;
+  const amount = body.amount;
+  const paymentStatus = body.paymentStatus ?? body.status;
+  const sig = body.signature || req.headers.get("x-kashier-signature") || "";
+
+  if (!bookingId || !amount || !paymentStatus) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  // Validate signature — prevents spoofed webhook calls
-  if (signature && !verifySignature(bookingId, amount, currency, signature)) {
-    console.warn("Kashier webhook: invalid signature for orderId", bookingId);
+  if (sig && process.env.KASHIER_SECRET_KEY && !verifySignature(body, sig)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // "SUCCESS" is Kashier's v3 success status; adjust if their webhook uses different casing
-  const paid =
-    status === "SUCCESS" || status === "success" || status === "paid";
+  await connectDB();
 
-  if (!paid) {
-    // Record failure but still return 200 so Kashier doesn't retry
-    await connectDB();
-    await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
-    return NextResponse.json({ received: true });
+  const orderId = bookingId; // merchantOrderId = Booking _id OR WalletTransaction _id
+
+  // Route by record type: wallet top-ups are settled (and credited) separately.
+  if (Types.ObjectId.isValid(orderId)) {
+    const topup = await WalletTransaction.findOne({
+      _id: orderId,
+      type: "topup",
+    });
+    if (topup) {
+      // Re-query Kashier (source of truth) and credit once if paid.
+      await verifyAndSettleTopup(orderId);
+      return NextResponse.json({ received: true });
+    }
   }
 
-  await connectDB();
-  await Booking.findByIdAndUpdate(bookingId, {
-    paymentStatus: "paid",
-    status: "submitted",
-    paidAt: new Date(),
-  });
+  const st = paymentStatus.toLowerCase();
+  const paid = [
+    "success",
+    "captured",
+    "paid",
+    "complete",
+    "completed",
+  ].includes(st);
+
+  // Conditional update — only settle if still unsettled (race-safe vs verify path)
+  await Booking.findOneAndUpdate(
+    { _id: orderId, paymentStatus: { $in: ["pending", "failed"] } },
+    paid
+      ? { paymentStatus: "paid", status: "submitted", paidAt: new Date() }
+      : { paymentStatus: "failed" },
+  );
 
   return NextResponse.json({ received: true });
 }

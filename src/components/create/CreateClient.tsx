@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Plus, Eye, LogOut } from "lucide-react";
+import { Plus, Eye, Car, MapPin, Flag, Clock, Route } from "lucide-react";
 import { useTripStore } from "@/lib/store/useTripStore";
 import type { TripPoint } from "@/lib/store/useTripStore";
+import AppHeader from "@/components/layout/AppHeader";
 import DatePicker from "./DatePicker";
 import TripCycle, { type TripData } from "./TripCycle";
 import { format, addDays, startOfDay } from "date-fns";
@@ -38,15 +38,15 @@ function defaultTrip(
 }
 
 export default function CreateClient({ userEmail }: Props) {
-  const router = useRouter();
-  const { pickup, dropoff, clear } = useTripStore();
+  const { pickup, dropoff } = useTripStore();
   const [mounted, setMounted] = useState(false);
   const date = format(addDays(startOfDay(new Date()), 1), "yyyy-MM-dd");
   const [trips, setTrips] = useState<TripData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [payMethod, setPayMethod] = useState<"card" | "wallet">("card");
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [picking, setPicking] = useState<{
     tripId: string;
     field: "pickup" | "dropoff";
@@ -57,6 +57,28 @@ export default function CreateClient({ userEmail }: Props) {
     setMounted(true);
     setTrips([defaultTrip(pickup, dropoff)]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load wallet balance so we can offer it as a payment method.
+  // Reconcile first so any top-up Kashier confirmed but we missed is credited
+  // before the balance is shown.
+  useEffect(() => {
+    (async () => {
+      try {
+        await fetch("/api/wallet/reconcile", { method: "POST" });
+      } catch {
+        /* non-fatal */
+      }
+      try {
+        const r = await fetch("/api/wallet", { cache: "no-store" });
+        if (r.ok) {
+          const d = await r.json();
+          setWalletBalance(d.balanceEgp);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
   }, []);
 
   const handleMapPick = useCallback(
@@ -99,6 +121,27 @@ export default function CreateClient({ userEmail }: Props) {
         );
         return;
       }
+
+      // ── Wallet payment ──
+      if (payMethod === "wallet") {
+        const walletRes = await fetch("/api/payments/wallet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookingId: data.bookingId }),
+        });
+        const walletData = await walletRes.json();
+        if (!walletRes.ok) {
+          setSubmitError(
+            walletData.error ?? "Wallet payment failed. Please try again.",
+          );
+          return;
+        }
+        navigating = true;
+        window.location.href = `/checkout/callback?bookingId=${data.bookingId}`;
+        return;
+      }
+
+      // ── Card payment (Kashier) ──
       const payRes = await fetch("/api/payments/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,16 +201,6 @@ export default function CreateClient({ userEmail }: Props) {
     setShowPreview(true);
   }
 
-  async function handleLogout() {
-    setLoggingOut(true);
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      clear();
-    } finally {
-      router.replace("/login");
-    }
-  }
-
   const totalEgp = trips.reduce(
     (sum, t) =>
       sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0, t.vehicleType),
@@ -202,74 +235,7 @@ export default function CreateClient({ userEmail }: Props) {
       }}
     >
       {/* Top nav bar */}
-      <header
-        style={{
-          height: 56,
-          background: "#ffffff",
-          borderBottom: "1px solid #eef0f3",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          flexShrink: 0,
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <Link href="/" style={{ textDecoration: "none" }}>
-          <span
-            style={{
-              fontWeight: 900,
-              fontSize: 17,
-              color: "#0B1E3D",
-              letterSpacing: "-0.025em",
-            }}
-          >
-            Commuter
-          </span>
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span
-            style={{ fontSize: 13, color: "#5A6A7A", display: "none" }}
-            className="email-desktop"
-          >
-            {userEmail}
-          </span>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            aria-label="Log out"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              background: "none",
-              border: "1.5px solid #e8edf0",
-              borderRadius: 8,
-              cursor: "pointer",
-              color: "#5A6A7A",
-              fontSize: 13,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              padding: "8px 14px",
-              minHeight: 36,
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#e74c3c";
-              e.currentTarget.style.color = "#e74c3c";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#e8edf0";
-              e.currentTarget.style.color = "#5A6A7A";
-            }}
-          >
-            <LogOut size={14} aria-hidden="true" />
-            Log out
-          </button>
-        </div>
-      </header>
+      <AppHeader authed email={userEmail} variant="app" />
 
       {/* Main split layout */}
       <div
@@ -596,29 +562,93 @@ export default function CreateClient({ userEmail }: Props) {
                       color: "#5A6A7A",
                       display: "flex",
                       flexDirection: "column",
-                      gap: 4,
+                      gap: 8,
                     }}
                   >
-                    <span>🚗 {VEHICLE_LIST_LABEL(t.vehicleType)}</span>
-                    <span>
-                      📍{" "}
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <Car
+                        size={15}
+                        color="#0B1E3D"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      />
+                      <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
+                        {VEHICLE_LIST_LABEL(t.vehicleType)}
+                      </strong>
+                    </span>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <MapPin
+                        size={15}
+                        color="#00C2A8"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      />
                       {t.pickup?.address
                         ? formatDisplayName(t.pickup.address)
                         : "—"}
                     </span>
-                    <span>
-                      🏁{" "}
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <Flag
+                        size={15}
+                        color="#F5A623"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      />
                       {t.dropoff?.address
                         ? formatDisplayName(t.dropoff.address)
                         : "—"}
                     </span>
-                    <span>
-                      ⏰ Pickup: <strong>{to12h(t.pickupTime)}</strong> ·
-                      Arrive: <strong>{to12h(t.arrivalTime)}</strong>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <Clock
+                        size={15}
+                        color="#5A6A7A"
+                        aria-hidden="true"
+                        style={{ flexShrink: 0 }}
+                      />
+                      <span>
+                        Pickup: <strong>{to12h(t.pickupTime)}</strong> · Arrive:{" "}
+                        <strong>{to12h(t.arrivalTime)}</strong>
+                      </span>
                     </span>
                     {t.distanceKm && (
-                      <span>
-                        📏 {t.distanceKm} km · {t.durationMinutes} min drive
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <Route
+                          size={15}
+                          color="#5A6A7A"
+                          aria-hidden="true"
+                          style={{ flexShrink: 0 }}
+                        />
+                        {t.distanceKm} km · {t.durationMinutes} min drive
                       </span>
                     )}
                   </div>
@@ -672,6 +702,118 @@ export default function CreateClient({ userEmail }: Props) {
                   {submitError}
                 </p>
               )}
+
+              {/* Payment method */}
+              {(() => {
+                const walletEnough =
+                  walletBalance !== null && walletBalance >= totalEgp;
+                return (
+                  <div style={{ marginTop: 18 }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#0B1E3D",
+                        display: "block",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Payment method
+                    </span>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setPayMethod("card")}
+                        style={{
+                          flex: 1,
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          border:
+                            payMethod === "card"
+                              ? "1.5px solid #00C2A8"
+                              : "1.5px solid #eef0f3",
+                          background:
+                            payMethod === "card"
+                              ? "rgba(0,194,168,0.08)"
+                              : "#fff",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "#0B1E3D",
+                          }}
+                        >
+                          Card
+                        </span>
+                        <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                          Pay via Kashier
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => walletEnough && setPayMethod("wallet")}
+                        disabled={!walletEnough}
+                        style={{
+                          flex: 1,
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          border:
+                            payMethod === "wallet"
+                              ? "1.5px solid #00C2A8"
+                              : "1.5px solid #eef0f3",
+                          background:
+                            payMethod === "wallet"
+                              ? "rgba(0,194,168,0.08)"
+                              : "#fff",
+                          cursor: walletEnough ? "pointer" : "not-allowed",
+                          opacity: walletEnough ? 1 : 0.55,
+                          fontFamily: "inherit",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: "#0B1E3D",
+                          }}
+                        >
+                          Wallet
+                        </span>
+                        <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                          {walletBalance === null
+                            ? "Loading balance…"
+                            : `Balance: ${walletBalance} EGP`}
+                        </span>
+                      </button>
+                    </div>
+                    {walletBalance !== null && !walletEnough && (
+                      <p
+                        style={{
+                          fontSize: 12,
+                          color: "#5A6A7A",
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        Not enough balance to pay {totalEgp} EGP.{" "}
+                        <Link
+                          href="/wallet"
+                          style={{ color: "#00C2A8", fontWeight: 600 }}
+                        >
+                          Top up your wallet
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               <button
                 type="button"

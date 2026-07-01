@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
 import { Types } from "mongoose";
+import { verifyAndSettleBooking } from "@/lib/payments/kashier";
 
 interface SearchParams {
   bookingId?: string;
@@ -29,6 +30,10 @@ export default async function CallbackPage({
   if (!bookingId || !Types.ObjectId.isValid(bookingId)) {
     redirect("/my-requests");
   }
+
+  // Active verification — query Kashier directly and settle the booking.
+  // Don't rely on the webhook alone (may be delayed or fail to deliver).
+  await verifyAndSettleBooking(bookingId, session.userId);
 
   await connectDB();
   const booking = await Booking.findOne({

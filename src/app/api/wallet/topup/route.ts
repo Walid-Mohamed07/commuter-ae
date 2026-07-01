@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { WalletTransaction } from "@/models/WalletTransaction";
 import { Types } from "mongoose";
 
 const KASHIER_URL =
@@ -9,34 +9,28 @@ const KASHIER_URL =
     ? "https://api.kashier.io/v3/payment/sessions"
     : "https://test-api.kashier.io/v3/payment/sessions";
 
+const MIN_TOPUP = 10;
+const MAX_TOPUP = 5000;
+
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let bookingId: string;
+  let amount: number;
   try {
-    ({ bookingId } = await req.json());
+    ({ amount } = await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  if (!bookingId || !Types.ObjectId.isValid(bookingId))
-    return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 });
-
-  await connectDB();
-
-  const booking = await Booking.findOne({
-    _id: bookingId,
-    userId: new Types.ObjectId(session.userId),
-    paymentStatus: { $in: ["pending", "failed"] },
-  });
-
-  if (!booking)
+  amount = Math.round(Number(amount));
+  if (!isFinite(amount) || amount < MIN_TOPUP || amount > MAX_TOPUP) {
     return NextResponse.json(
-      { error: "Booking not found or already paid." },
-      { status: 404 },
+      { error: `Top-up must be between ${MIN_TOPUP} and ${MAX_TOPUP} EGP.` },
+      { status: 400 },
     );
+  }
 
   const appUrl = process.env.APP_URL;
   if (!appUrl) {
@@ -45,15 +39,25 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+
+  await connectDB();
+
+  // Create the pending ledger row first — its _id is the Kashier order id.
+  const tx = await WalletTransaction.create({
+    userId: new Types.ObjectId(session.userId),
+    type: "topup",
+    amountEgp: amount,
+    status: "pending",
+    description: `Wallet top-up of ${amount} EGP`,
+  });
+
   const expireAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
   const body = {
-    merchantOrderId: String(booking._id),
+    merchantOrderId: String(tx._id),
     merchantId: process.env.KASHIER_MERCHANT_ID!,
-    amount: String(booking.amountEgp),
+    amount: String(amount),
     currency: "EGP",
-    // order: String(booking._id),
-    // mode: process.env.KASHIER_MODE ?? "test",
     paymentType: "credit",
     type: "one-time",
     maxFailureAttempts: 3,
@@ -64,7 +68,7 @@ export async function POST(req: NextRequest) {
       email: session.email,
       reference: String(session.userId),
     },
-    merchantRedirect: `${appUrl}/checkout/callback?bookingId=${bookingId}`,
+    merchantRedirect: `${appUrl}/wallet?topupId=${tx._id}`,
     serverWebhook: `${appUrl}/api/payments/webhook`,
   };
 
@@ -80,6 +84,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
   } catch {
+    await WalletTransaction.findByIdAndUpdate(tx._id, { status: "failed" });
     return NextResponse.json(
       { error: "Failed to reach payment gateway." },
       { status: 502 },
@@ -89,16 +94,17 @@ export async function POST(req: NextRequest) {
   const kashierData = await kashierRes.json();
 
   if (!kashierRes.ok || !kashierData?.sessionUrl) {
-    console.error("Kashier session error:", kashierData);
+    console.error("Kashier topup session error:", kashierData);
+    await WalletTransaction.findByIdAndUpdate(tx._id, { status: "failed" });
     return NextResponse.json(
       { error: "Payment gateway rejected the request." },
       { status: 502 },
     );
   }
 
-  await Booking.findByIdAndUpdate(bookingId, {
+  await WalletTransaction.findByIdAndUpdate(tx._id, {
     kashierSessionId: kashierData._id ?? "",
-    kashierOrderId: String(booking._id),
+    kashierOrderId: String(tx._id),
   });
 
   return NextResponse.json({ sessionUrl: kashierData.sessionUrl });

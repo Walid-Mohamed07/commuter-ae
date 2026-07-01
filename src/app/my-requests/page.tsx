@@ -1,14 +1,21 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Clock, Car } from "lucide-react";
+import { MapPin, Clock, Car } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
+import AppHeader from "@/components/layout/AppHeader";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
 import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
+import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
+import Pagination from "@/components/shared/Pagination";
+import RouteMap from "@/components/shared/RouteMap";
 import type { VehicleKey } from "@/lib/config/vehicles";
 
 export const metadata = { title: "My requests — Commuter" };
+export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 8;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +101,8 @@ interface TripRow {
   vehicleType: string;
   pickupAddress: string;
   dropoffAddress: string;
+  pickup: { lat: number; lng: number } | null;
+  dropoff: { lat: number; lng: number } | null;
   pickupTime: string;
   arrivalTime: string;
   priceEgp: number;
@@ -111,15 +120,62 @@ interface BookingRow {
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
-export default async function MyTripsPage() {
+const PAYMENT_OPTIONS: FilterDef = {
+  key: "payment",
+  label: "Payment",
+  options: [
+    { value: "paid", label: "Paid" },
+    { value: "pending", label: "Awaiting payment" },
+    { value: "failed", label: "Failed" },
+    { value: "refunded", label: "Refunded" },
+  ],
+};
+
+const STATUS_OPTIONS: FilterDef = {
+  key: "status",
+  label: "Status",
+  options: [
+    { value: "pending_payment", label: "Pending payment" },
+    { value: "submitted", label: "Submitted" },
+    { value: "matching", label: "Matching" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "active", label: "Active" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+  ],
+};
+
+export default async function MyTripsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-requests");
 
+  const params = await searchParams;
+  const payment =
+    typeof params.payment === "string" ? params.payment : undefined;
+  const statusFilter =
+    typeof params.status === "string" ? params.status : undefined;
+  const page = Math.max(1, Number(params.page) || 1);
+
   await connectDB();
 
-  const raw = await Booking.find({ userId: session.userId })
+  const query: Record<string, unknown> = { userId: session.userId };
+  if (payment && payment in PAY_PILL) query.paymentStatus = payment;
+  if (statusFilter && statusFilter in STATUS_PILL) query.status = statusFilter;
+
+  const total = await Booking.countDocuments(query);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const raw = await Booking.find(query)
     .sort({ createdAt: -1 })
+    .skip((page - 1) * PAGE_SIZE)
+    .limit(PAGE_SIZE)
     .lean();
+
+  const hasFilters = Boolean(payment || statusFilter);
 
   // Serialise — strip ObjectId / Date to plain strings
   const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
@@ -133,14 +189,21 @@ export default async function MyTripsPage() {
         b.createdAt instanceof Date
           ? b.createdAt.toISOString()
           : String(b.createdAt),
-      trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => ({
-        vehicleType: t.vehicleType as string,
-        pickupAddress: (t.pickup as { address: string }).address,
-        dropoffAddress: (t.dropoff as { address: string }).address,
-        pickupTime: t.pickupTime as string,
-        arrivalTime: t.arrivalTime as string,
-        priceEgp: t.priceEgp as number,
-      })),
+      trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => {
+        const p = t.pickup as { address: string; lat: number; lng: number };
+        const d = t.dropoff as { address: string; lat: number; lng: number };
+        return {
+          vehicleType: t.vehicleType as string,
+          pickupAddress: p.address,
+          dropoffAddress: d.address,
+          pickup: typeof p.lat === "number" ? { lat: p.lat, lng: p.lng } : null,
+          dropoff:
+            typeof d.lat === "number" ? { lat: d.lat, lng: d.lng } : null,
+          pickupTime: t.pickupTime as string,
+          arrivalTime: t.arrivalTime as string,
+          priceEgp: t.priceEgp as number,
+        };
+      }),
     }),
   );
 
@@ -153,48 +216,12 @@ export default async function MyTripsPage() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      {/* Header */}
-      <header
-        style={{
-          height: 56,
-          background: "#0B1E3D",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 20px",
-          gap: 14,
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <Link
-          href="/create"
-          aria-label="Back to booking"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            color: "rgba(255,255,255,0.75)",
-            background: "rgba(255,255,255,0.08)",
-            textDecoration: "none",
-          }}
-        >
-          <ArrowLeft size={18} aria-hidden="true" />
-        </Link>
-        <span
-          style={{
-            fontWeight: 900,
-            fontSize: 17,
-            color: "#fff",
-            letterSpacing: "-0.025em",
-          }}
-        >
-          Commuter
-        </span>
-      </header>
+      <AppHeader
+        authed
+        email={session.email}
+        variant="app"
+        backHref="/create"
+      />
 
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
@@ -212,17 +239,25 @@ export default async function MyTripsPage() {
             My requests
           </h1>
           <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
-            {bookings.length === 0
-              ? "No bookings yet."
-              : `${bookings.length} booking${bookings.length === 1 ? "" : "s"}`}
+            {total === 0
+              ? hasFilters
+                ? "No bookings match these filters."
+                : "No bookings yet."
+              : `${total} booking${total === 1 ? "" : "s"}`}
           </p>
         </div>
+
+        <FilterBar filters={[PAYMENT_OPTIONS, STATUS_OPTIONS]} />
 
         {bookings.length === 0 ? (
           <EmptyState
             icon="🚗"
-            title="No trips yet"
-            description="Book your first commute ride and it will appear here."
+            title={hasFilters ? "Nothing here" : "No trips yet"}
+            description={
+              hasFilters
+                ? "Try clearing the filters to see all your bookings."
+                : "Book your first commute ride and it will appear here."
+            }
             action={
               <Link
                 href="/create"
@@ -273,16 +308,25 @@ export default async function MyTripsPage() {
 
               {/* Booking cards for this date */}
               {dayBookings.map((booking) => (
-                <div
+                <Link
                   key={booking.id}
+                  href={`/my-requests/${booking.id}`}
                   style={{
                     background: "#fff",
                     borderRadius: 14,
                     border: "1px solid #eef0f3",
                     marginBottom: 12,
                     overflow: "hidden",
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "block",
                   }}
                 >
+                  <RouteMap
+                    pickup={booking.trips[0]?.pickup}
+                    dropoff={booking.trips[0]?.dropoff}
+                    height={120}
+                  />
                   {/* Booking header row */}
                   <div
                     style={{
@@ -467,10 +511,14 @@ export default async function MyTripsPage() {
                       </div>
                     );
                   })}
-                </div>
+                </Link>
               ))}
             </section>
           ))
+        )}
+
+        {bookings.length > 0 && (
+          <Pagination page={page} totalPages={totalPages} />
         )}
       </main>
     </div>
