@@ -684,6 +684,70 @@ export default function CreateClient({ userEmail }: Props) {
                 </div>
               )}
 
+              {/* ── Instructions & guidance ── */}
+              {(() => {
+                const vehicleTypes = trips.map((t) => t.vehicleType);
+                const hasNoWait = vehicleTypes.some(
+                  (v) => v === "van_shared" || v === "microbus_shared",
+                );
+                const has5min = vehicleTypes.some(
+                  (v) => v === "private_car" || v === "taxi_private",
+                );
+                const has3min = vehicleTypes.some((v) => v === "taxi_shared");
+                return (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      padding: "14px 16px",
+                      background: "rgba(245,166,35,0.1)",
+                      border: "1.5px solid #F5A623",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        fontWeight: 800,
+                        fontSize: 13,
+                        color: "#0B1E3D",
+                        marginBottom: 8,
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      ⚠️ Instructions &amp; guidance
+                    </span>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: 18,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 5,
+                      }}
+                    >
+                      <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
+                        Please be punctual — drivers will not wait beyond the allowed time.
+                      </li>
+                      {hasNoWait && (
+                        <li style={{ fontSize: 13, color: "#e74c3c", fontWeight: 700 }}>
+                          No waiting time allowed for Van / Microbus rides — be at the pickup point on time.
+                        </li>
+                      )}
+                      {has3min && (
+                        <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
+                          Shared Taxi: maximum waiting time is <strong>3 minutes</strong>.
+                        </li>
+                      )}
+                      {has5min && (
+                        <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
+                          Private Car / Private Taxi: maximum waiting time is <strong>5 minutes</strong>.
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                );
+              })()}
+
               {submitError && (
                 <p
                   role="alert"
