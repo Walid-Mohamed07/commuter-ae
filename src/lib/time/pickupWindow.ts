@@ -9,12 +9,12 @@ export function toHHMM(mins: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** Single pickup time = arrival − duration − buffer. */
+/** Pickup time = arrival − duration − vehicle window (margin minutes). */
 export function computePickupTime(
   arrivalTime: string, // "HH:MM"
   durationMinutes: number,
   vehicle: VehicleKey,
 ): string {
-  const { buffer } = VEHICLES[vehicle];
-  return toHHMM(toMinutes(arrivalTime) - durationMinutes - buffer);
+  const { window } = VEHICLES[vehicle];
+  return toHHMM(toMinutes(arrivalTime) - durationMinutes - window);
 }

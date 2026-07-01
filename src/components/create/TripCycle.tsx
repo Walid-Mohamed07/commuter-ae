@@ -9,7 +9,7 @@ import {
   finalPrice,
   type VehicleKey,
 } from "@/lib/config/vehicles";
-import { computePickupTime, toHHMM } from "@/lib/time/pickupWindow";
+import { computePickupTime, toHHMM, toMinutes } from "@/lib/time/pickupWindow";
 import { fetchRoute } from "@/lib/openrouteservice";
 import type { TripPoint } from "@/lib/store/useTripStore";
 
@@ -53,17 +53,6 @@ function pickBtnStyle(active: boolean): React.CSSProperties {
     background: active ? "rgba(0,194,168,0.1)" : "#f8f9fa",
     color: active ? "#00897B" : "#5A6A7A",
   };
-}
-
-/** Generate 5 pickup-time options: computed+10, computed, computed-10, computed-20, computed-30 */
-function pickupOptions(computed: string): string[] {
-  if (!computed) return [];
-  const [h, m] = computed.split(":").map(Number);
-  const base = h * 60 + m;
-  return [10, 0, -10, -20, -30].map((offset) => {
-    const total = (((base + offset) % 1440) + 1440) % 1440;
-    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-  });
 }
 
 /** Render "HH:MM" 24h as 12h am/pm */
@@ -179,25 +168,10 @@ export default function TripCycle({
     [data, onChange],
   );
 
-  // Derive the computed base each render (for option generation)
-  const computedBase =
-    data.arrivalTime && data.durationMinutes
-      ? computePickupTime(
-          data.arrivalTime,
-          data.durationMinutes,
-          data.vehicleType,
-        )
-      : "";
-
-  // Use computedBase for options, data.pickupTime for selected value
-  {
-    pickupOptions(computedBase).map((opt) => (
-      <option key={opt} value={opt}>
-        {to12h(opt)}
-        {opt === computedBase ? " (recommended)" : ""}
-      </option>
-    ));
-  }
+  // Pickup window end = start + 10 min margin
+  const pickupWindowEnd = data.pickupTime
+    ? toHHMM(toMinutes(data.pickupTime) + 10)
+    : "";
 
   return (
     <div
@@ -416,10 +390,19 @@ export default function TripCycle({
                 data.extraPassengers ?? 0,
                 newMax,
               );
+              const newPickupTime =
+                data.arrivalTime && data.durationMinutes
+                  ? computePickupTime(
+                      data.arrivalTime,
+                      data.durationMinutes,
+                      newVehicle,
+                    )
+                  : data.pickupTime;
               onChange({
                 ...data,
                 vehicleType: newVehicle,
                 extraPassengers: clampedPassengers,
+                pickupTime: newPickupTime,
               });
             }}
             style={{
@@ -509,10 +492,9 @@ export default function TripCycle({
           </p>
         </div>
 
-        {/* Pickup time — select with ±10min options around computed base */}
+        {/* Pickup time — readonly window: arrival − duration − vehicle margin, ±10min */}
         <div>
           <label
-            htmlFor={`pickup-time-${data.id}`}
             style={{
               ...labelStyle,
               display: "flex",
@@ -530,36 +512,22 @@ export default function TripCycle({
             </span>
           </label>
           {data.pickupTime ? (
-            <select
-              id={`pickup-time-${data.id}`}
-              value={data.pickupTime}
-              onChange={(e) => set("pickupTime", e.target.value)}
-              style={{
-                width: "100%",
-                height: 52,
-                padding: "0 14px",
-                borderRadius: 12,
-                border: "1.5px solid #e8edf0",
-                background: "#f8f9fa",
-                fontSize: 15,
-                fontFamily: "inherit",
-                color: "#0B1E3D",
-                appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6A7A' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 14px center",
-                paddingRight: 40,
-                cursor: "pointer",
-                outline: "none",
-              }}
+            <div
+              style={readonlyStyle}
+              aria-label="Pickup time window"
+              role="status"
             >
-              {pickupOptions(computedBase).map((opt) => (
-                <option key={opt} value={opt}>
-                  {to12h(opt)}
-                  {opt === computedBase ? " (recommended)" : ""}
-                </option>
-              ))}
-            </select>
+              <span
+                style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#0B1E3D",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {to12h(data.pickupTime)} ~ {to12h(pickupWindowEnd)}
+              </span>
+            </div>
           ) : (
             <div
               style={readonlyStyle}

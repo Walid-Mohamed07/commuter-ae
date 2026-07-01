@@ -66,8 +66,9 @@ export function priceFor(distanceKm: number, key: VehicleKey): number {
 
 /** Max extra passengers allowed per vehicle type */
 export function maxExtraPassengers(key: VehicleKey): number {
+  if (key === "taxi_shared") return 2;
   if (key === "van_shared") return 4;
-  if (key === "microbus_shared") return 8;
+  if (key === "microbus_shared") return 9;
   return 2; // private_car, taxi_private, taxi_shared
 }
 
@@ -81,13 +82,35 @@ export function finalPrice(
   extraPassengers: number,
   vehicleType: VehicleKey,
 ): number {
-  if (
-    vehicleType === "taxi_shared" ||
-    vehicleType === "van_shared" ||
-    vehicleType === "microbus_shared"
-  ) {
-    if (!extraPassengers || extraPassengers <= 0) return basePrice;
-    return Math.round(basePrice * (extraPassengers + 1) * 0.95);
+  const n = extraPassengers;
+  const r = (factor: number) => Math.round(basePrice * (n + 1) * factor);
+
+  if (vehicleType === "taxi_shared") {
+    if (n === 1) return r(0.75);
+    if (n === 2) return r(0.5);
+    return basePrice;
   }
+
+  if (vehicleType === "van_shared") {
+    if (n === 1) return r(0.9);
+    if (n === 2) return r(0.8);
+    if (n === 3) return r(0.65);
+    if (n === 4) return r(0.5);
+    return basePrice;
+  }
+
+  if (vehicleType === "microbus_shared") {
+    if (n === 1) return r(0.95);
+    if (n === 2) return r(0.9);
+    if (n === 3) return r(0.85);
+    if (n === 4) return r(0.8);
+    if (n === 5) return r(0.75);
+    if (n === 6) return r(0.7);
+    if (n === 7) return r(0.65);
+    if (n === 8) return r(0.6);
+    if (n === 9) return r(0.55);
+    return basePrice;
+  }
+
   return basePrice;
 }

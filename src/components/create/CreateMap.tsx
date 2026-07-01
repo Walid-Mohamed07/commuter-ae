@@ -38,14 +38,15 @@ export default function CreateMap({ trips, picking, onMapPick }: Props) {
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
-const polylinesRef = useRef<google.maps.Polyline[]>([]);
-const [mapReady, setMapReady] = useState(false);
+  const polylinesRef = useRef<google.maps.Polyline[]>([]);
+  const [mapReady, setMapReady] = useState(false);
   const zonesLoadedRef = useRef(false);
   const [zoom, setZoom] = useState(11);
 
   interface ZoneLabel {
     id: string;
     no: number;
+    name: string;
     lat: number;
     lng: number;
   }
@@ -58,12 +59,17 @@ const [mapReady, setMapReady] = useState(false);
       .then((r) => r.json())
       .then((fc) => {
         if (cancelled) return;
-        const labels: ZoneLabel[] = fc.features.map((f: any) => ({
-          id: String(f.id),
-          no: f.properties?.NO ?? 0,
-          lat: f.geometry.coordinates[1], // GeoJSON = [lng, lat]
-          lng: f.geometry.coordinates[0],
-        }));
+        const labels: ZoneLabel[] = fc.features.map((f: any) => {
+          const idStr = String(f.id); // "ZONE 1"
+          const noMatch = idStr.match(/\d+/);
+          return {
+            id: String(f.id),
+            no: f.properties?.NO ?? (noMatch ? parseInt(noMatch[0]) : 0),
+            name: f.properties?.NAME ?? "",
+            lat: f.geometry.coordinates[1], // GeoJSON = [lng, lat]
+            lng: f.geometry.coordinates[0],
+          };
+        });
         setZoneLabels(labels);
       })
       .catch(() => {});
@@ -74,7 +80,7 @@ const [mapReady, setMapReady] = useState(false);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
-setMapReady(true);
+    setMapReady(true);
     if (zonesLoadedRef.current) return; // prevents double-add on remount
     zonesLoadedRef.current = true;
 
@@ -117,35 +123,43 @@ setMapReady(true);
   }, [JSON.stringify(allPoints)]);
 
   // Draw routes imperatively — wipe + redraw on every change (no ghost lines)
-useEffect(() => {
-  if (!mapRef.current) return;
-  const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
 
-  // clear previous
-  polylinesRef.current.forEach((p) => p.setMap(null));
-  polylinesRef.current = [];
-
-  trips.forEach((t, i) => {
-    if (!t.routeCoordinates || t.routeCoordinates.length < 2) return;
-    const path = t.routeCoordinates.map(([lat, lng]) => ({ lat, lng }));
-    const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
-    const glow = new google.maps.Polyline({
-      path, strokeColor: color, strokeOpacity: 0.15, strokeWeight: 14, zIndex: 1,
-      map: mapRef.current!,
-    });
-    const main = new google.maps.Polyline({
-      path, strokeColor: color, strokeOpacity: 0.9, strokeWeight: 5, zIndex: 2,
-      map: mapRef.current!,
-    });
-    polylinesRef.current.push(glow, main);
-  });
-
-  return () => {
+    // clear previous
     polylinesRef.current.forEach((p) => p.setMap(null));
     polylinesRef.current = [];
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [JSON.stringify(trips.map((t) => t.routeCoordinates)), mapReady]);
+
+    trips.forEach((t, i) => {
+      if (!t.routeCoordinates || t.routeCoordinates.length < 2) return;
+      const path = t.routeCoordinates.map(([lat, lng]) => ({ lat, lng }));
+      const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+      const glow = new google.maps.Polyline({
+        path,
+        strokeColor: color,
+        strokeOpacity: 0.15,
+        strokeWeight: 14,
+        zIndex: 1,
+        map: mapRef.current!,
+      });
+      const main = new google.maps.Polyline({
+        path,
+        strokeColor: color,
+        strokeOpacity: 0.9,
+        strokeWeight: 5,
+        zIndex: 2,
+        map: mapRef.current!,
+      });
+      polylinesRef.current.push(glow, main);
+    });
+
+    return () => {
+      polylinesRef.current.forEach((p) => p.setMap(null));
+      polylinesRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(trips.map((t) => t.routeCoordinates)), mapReady]);
 
   const handleMapClick = useCallback(
     async (e: google.maps.MapMouseEvent) => {
@@ -226,7 +240,7 @@ useEffect(() => {
               scale: 0, // invisible marker, label only
             }}
             label={{
-              text: z.no ? `Zone ${z.no}` : z.id,
+              text: z.name ? `${z.no} ${z.name}` : `Zone ${z.no}`,
               color: "#0B1E3D",
               fontSize: "11px",
               fontWeight: "600",
