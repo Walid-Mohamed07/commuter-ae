@@ -55,7 +55,7 @@ export default function ProfileClient({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader authed email={email} variant="app" backHref="/create" />
+      <AppHeader authed email={email} variant="app" backHref="/" />
 
       <main
         style={{ maxWidth: 520, margin: "0 auto", padding: "32px 20px 48px" }}

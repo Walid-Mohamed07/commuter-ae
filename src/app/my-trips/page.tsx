@@ -217,12 +217,7 @@ export default async function MyTripsPage({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader
-        authed
-        email={session.email}
-        variant="app"
-        backHref="/create"
-      />
+      <AppHeader authed email={session.email} variant="app" backHref="/" />
 
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}

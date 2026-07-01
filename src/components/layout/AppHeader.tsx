@@ -137,7 +137,8 @@ export default function AppHeader({
             </Link>
           )}
           <Link
-            href={authed ? "/create" : "/"}
+            // href={authed ? "/create" : "/"}
+            href={"/"}
             aria-label="Commuter home"
             style={{
               textDecoration: "none",

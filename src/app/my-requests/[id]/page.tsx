@@ -146,12 +146,7 @@ export default async function RequestDetailPage({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader
-        authed
-        email={session.email}
-        variant="app"
-        backHref="/my-requests"
-      />
+      <AppHeader authed email={session.email} variant="app" backHref="/" />
 
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px 56px" }}
