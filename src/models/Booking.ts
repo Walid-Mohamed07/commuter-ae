@@ -30,7 +30,7 @@ const TripSchema = new Schema(
     distanceKm: { type: Number, required: true },
     durationMinutes: { type: Number, required: true },
     priceEgp: { type: Number, required: true }, // server-recomputed
-    extraPassengers: { type: Number, default: 0, min: 0, max: 3 },
+    extraPassengers: { type: Number, default: 0, min: 0, max: 9 },
   },
   { _id: true },
 );
@@ -51,7 +51,7 @@ const BookingSchema = new Schema(
       type: String,
       required: true,
       default: "pending",
-      enum: ["pending", "paid", "failed", "refunded"],
+      enum: ["pending", "paid", "failed", "refunded", "expired"],
     },
     kashierSessionId: { type: String },
     kashierOrderId: { type: String }, // = booking _id sent as orderId
@@ -70,6 +70,7 @@ const BookingSchema = new Schema(
         "active",
         "completed",
         "cancelled",
+        "time_out",
       ],
     },
   },

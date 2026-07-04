@@ -12,6 +12,7 @@ import {
   Loader2,
   ArrowLeft,
 } from "lucide-react";
+import Image from "next/image";
 
 type Mode = "login" | "register";
 
@@ -150,7 +151,22 @@ function LoginForm() {
       >
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <Link href="/" style={{ textDecoration: "none" }}>
+          <Link
+            href="/"
+            style={{
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <Image
+              src="/assets/images/commuterLogo.png"
+              alt="Commuter logo"
+              width={50}
+              height={50}
+            />
             <span
               style={{
                 fontWeight: 900,

@@ -1,5 +1,4 @@
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { Types } from "mongoose";
 import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
@@ -9,6 +8,8 @@ import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import RouteMap from "@/components/shared/RouteMap";
+import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
+import { getOrCreateWallet } from "@/lib/wallet/wallet";
 
 export const metadata = { title: "Request details — Commuter" };
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ function prettyDate(date: string): string {
   });
 }
 
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
 type BookingStatus =
   | "pending_payment"
   | "submitted"
@@ -39,7 +40,8 @@ type BookingStatus =
   | "confirmed"
   | "active"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -49,6 +51,7 @@ const PAY_PILL: Record<
   paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
   failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
   refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
+  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 const STATUS_PILL: Record<
@@ -66,6 +69,7 @@ const STATUS_PILL: Record<
   active: { label: "Active", bg: "#00C2A8", color: "#fff" },
   completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
   cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
+  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -116,12 +120,31 @@ export default async function RequestDetailPage({
 
   await connectDB();
 
-  const b = await Booking.findOne({
-    _id: id,
-    userId: session.userId,
-  }).lean<Record<string, unknown>>();
+  // Lazy-expire this booking if still pending after 2 h
+  await Booking.updateOne(
+    {
+      _id: id,
+      userId: session.userId,
+      status: "pending_payment",
+      paymentStatus: { $in: ["pending", "failed"] },
+      $expr: {
+        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
+      },
+    },
+    { $set: { status: "time_out", paymentStatus: "expired" } },
+  );
+
+  const [b, wallet] = await Promise.all([
+    Booking.findOne({
+      _id: id,
+      userId: session.userId,
+    }).lean<Record<string, unknown>>(),
+    getOrCreateWallet(session.userId),
+  ]);
 
   if (!b) notFound();
+
+  const walletBalance: number = wallet.balanceEgp ?? 0;
 
   const date = b.date as string;
   const amountEgp = b.amountEgp as number;
@@ -365,23 +388,13 @@ export default async function RequestDetailPage({
 
         {/* Pay CTA for unpaid bookings */}
         {(paymentStatus === "pending" || paymentStatus === "failed") && (
-          <Link
-            href="/my-requests"
-            style={{
-              display: "block",
-              textAlign: "center",
-              marginTop: 20,
-              padding: "14px 24px",
-              background: "#f0f4f8",
-              color: "#5A6A7A",
-              borderRadius: 12,
-              fontWeight: 600,
-              fontSize: 14,
-              textDecoration: "none",
-            }}
-          >
-            Payment still pending — settle from My requests
-          </Link>
+          <div style={{ marginTop: 20, borderRadius: 14, overflow: "hidden" }}>
+            <ContinueCheckoutButton
+              bookingId={id}
+              amountEgp={amountEgp}
+              walletBalance={walletBalance}
+            />
+          </div>
         )}
 
         <p

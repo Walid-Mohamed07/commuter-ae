@@ -111,6 +111,7 @@ export default function CreateClient({ userEmail }: Props) {
             arrivalTime: t.arrivalTime,
             distanceKm: t.distanceKm,
             durationMinutes: t.durationMinutes,
+            extraPassengers: t.extraPassengers,
           })),
         }),
       });
@@ -725,23 +726,63 @@ export default function CreateClient({ userEmail }: Props) {
                         gap: 5,
                       }}
                     >
-                      <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
-                        Please be punctual — drivers will not wait beyond the allowed time.
+                      <li
+                        style={{
+                          fontSize: 13,
+                          color: "#0B1E3D",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Please be punctual — drivers will not wait beyond the
+                        allowed time.
                       </li>
                       {hasNoWait && (
-                        <li style={{ fontSize: 13, color: "#e74c3c", fontWeight: 700 }}>
-                          No waiting time allowed for Van / Microbus rides — be at the pickup point on time.
+                        <li
+                          style={{
+                            fontSize: 13,
+                            color: "#e74c3c",
+                            fontWeight: 700,
+                          }}
+                        >
+                          No waiting time allowed for Van / Microbus rides — be
+                          at the pickup point on time.
                         </li>
                       )}
                       {has3min && (
-                        <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
-                          Shared Taxi: maximum waiting time is <strong>3 minutes</strong>.
+                        <li
+                          style={{
+                            fontSize: 13,
+                            color: "#0B1E3D",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Shared Taxi: maximum waiting time is{" "}
+                          <strong>3 minutes</strong>.
                         </li>
                       )}
                       {has5min && (
-                        <li style={{ fontSize: 13, color: "#0B1E3D", fontWeight: 600 }}>
-                          Private Car / Private Taxi: maximum waiting time is <strong>5 minutes</strong>.
-                        </li>
+                        <>
+                          <li
+                            style={{
+                              fontSize: 13,
+                              color: "#0B1E3D",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Private Car / Private Taxi: Maximum waiting time is{" "}
+                            <strong>5 minutes</strong>.
+                          </li>
+                          <li
+                            style={{
+                              fontSize: 13,
+                              color: "#0B1E3D",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Private Car / Private Taxi: Maximum baggage load is{" "}
+                            <strong>2 pieces</strong>.
+                          </li>
+                        </>
                       )}
                     </ul>
                   </div>
