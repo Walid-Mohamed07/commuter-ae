@@ -7,10 +7,10 @@ interface StartTripRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const tripId = params.id;
+    const { id: tripId } = await params;
     const body = (await request.json()) as StartTripRequest;
 
     if (!body.latitude || !body.longitude) {
