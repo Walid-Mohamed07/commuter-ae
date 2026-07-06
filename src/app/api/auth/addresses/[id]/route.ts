@@ -5,8 +5,9 @@ import { getSession } from "@/lib/auth/session";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,7 +28,7 @@ export async function PATCH(
 
     await connectDB();
     const result = await User.findOneAndUpdate(
-      { _id: session.userId, "savedAddresses._id": params.id },
+      { _id: session.userId, "savedAddresses._id": id },
       { $set: setFields },
       { new: true, select: "savedAddresses" },
     ).lean<{
@@ -43,7 +44,7 @@ export async function PATCH(
     if (!result)
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     const updated = result.savedAddresses?.find(
-      (a) => String(a._id) === params.id,
+      (a) => String(a._id) === id,
     );
     return NextResponse.json({ savedAddress: updated });
   } catch {
@@ -53,15 +54,16 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   await connectDB();
   await User.findByIdAndUpdate(session.userId, {
-    $pull: { savedAddresses: { _id: params.id } },
+    $pull: { savedAddresses: { _id: id } },
   });
   return NextResponse.json({ ok: true });
 }
