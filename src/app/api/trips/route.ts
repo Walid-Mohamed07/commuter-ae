@@ -19,6 +19,10 @@ interface TripInput {
   distanceKm: number;
   durationMinutes: number;
   extraPassengers?: number;
+  pickupStation?: { lat: number; lng: number; name: string };
+  dropoffStation?: { lat: number; lng: number; name: string };
+  walkingMinToStation?: number;
+  walkingMinFromStation?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -78,12 +82,19 @@ export async function POST(req: NextRequest) {
 
     const vKey = t.vehicleType as keyof typeof VEHICLES;
     const vehicle = VEHICLES[vKey];
+    const SHARED_TYPES = new Set(["taxi_shared", "van_shared", "microbus_shared"]);
+    const isShared = SHARED_TYPES.has(vKey);
 
     // Server-side recompute — never trust client values
     const rideType = vehicle.ride;
+    // For shared: add walk-from-station time so pickup_time accounts for it
+    const extraWalk =
+      isShared && typeof t.walkingMinFromStation === "number"
+        ? Math.max(0, Math.round(t.walkingMinFromStation))
+        : 0;
     const pickupTime = computePickupTime(
       t.arrivalTime,
-      Math.round(durMin),
+      Math.round(durMin) + extraWalk,
       vKey,
     );
     const basePrice = priceFor(distKm, vKey);
@@ -112,6 +123,20 @@ export async function POST(req: NextRequest) {
       durationMinutes: Math.round(durMin),
       priceEgp,
       extraPassengers: extraPax,
+      ...(isShared && t.pickupStation
+        ? {
+            pickupStation: t.pickupStation,
+            dropoffStation: t.dropoffStation ?? null,
+            walkingMinToStation: Math.max(
+              0,
+              Math.round(t.walkingMinToStation ?? 0),
+            ),
+            walkingMinFromStation: Math.max(
+              0,
+              Math.round(t.walkingMinFromStation ?? 0),
+            ),
+          }
+        : {}),
     });
   }
 

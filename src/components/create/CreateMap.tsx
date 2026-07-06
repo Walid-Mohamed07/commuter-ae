@@ -1,13 +1,40 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
+import {
+  GoogleMap,
+  useJsApiLoader,
+  Marker,
+  Polyline,
+} from "@react-google-maps/api";
 import { MAP_STYLE } from "@/lib/googleMapsStyle";
 import type { TripData } from "./TripCycle";
 import { reverseGeocode, formatDisplayName } from "@/lib/nominatim";
 import type { TripPoint } from "@/lib/store/useTripStore";
+import { isSharedVehicle } from "@/lib/geo/stations";
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const CAIRO = { lat: 30.0444, lng: 31.2357 };
+const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
+
+// ── Station marker icon ─────────────────────────────────────────────────────────────
+const STATION_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+    <circle cx="11" cy="11" r="10" fill="#F5A623" stroke="#0B1E3D" stroke-width="1.5"/>
+    <text x="11" y="15" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#0B1E3D">S</text>
+  </svg>`,
+)}`;
+
+// ── SVG route label badge ─────────────────────────────────────────────────────
+function routeLabelSvg(text: string, color: string): string {
+  const w = 58;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="22">
+      <rect width="${w}" height="22" rx="6" fill="${color}"/>
+      <text x="${w / 2}" y="15" font-family="Arial,sans-serif" font-size="11" font-weight="700"
+        fill="white" text-anchor="middle">${text}</text>
+    </svg>`,
+  )}`;
+}
 
 // ── SVG marker icons ──────────────────────────────────────────────────────
 const ORIGIN_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
@@ -29,9 +56,15 @@ interface Props {
   trips: TripData[];
   picking?: { tripId: string; field: "pickup" | "dropoff" } | null;
   onMapPick?: (point: TripPoint) => void;
+  onCancelPick?: () => void;
 }
 
-export default function CreateMap({ trips, picking, onMapPick }: Props) {
+export default function CreateMap({
+  trips,
+  picking,
+  onMapPick,
+  onCancelPick,
+}: Props) {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script", // shared with LocationPickerMap
     googleMapsApiKey: API_KEY,
@@ -102,6 +135,12 @@ export default function CreateMap({ trips, picking, onMapPick }: Props) {
   for (const t of trips) {
     if (t.routeCoordinates?.length) {
       t.routeCoordinates.forEach(([lat, lng]) => allPoints.push({ lat, lng }));
+      // For shared trips the route is station→station; include actual pickup/dropoff in bounds too
+      if (isSharedVehicle(t.vehicleType)) {
+        if (t.pickup) allPoints.push({ lat: t.pickup.lat, lng: t.pickup.lng });
+        if (t.dropoff)
+          allPoints.push({ lat: t.dropoff.lat, lng: t.dropoff.lng });
+      }
     } else {
       if (t.pickup) allPoints.push({ lat: t.pickup.lat, lng: t.pickup.lng });
       if (t.dropoff) allPoints.push({ lat: t.dropoff.lat, lng: t.dropoff.lng });
@@ -125,7 +164,6 @@ export default function CreateMap({ trips, picking, onMapPick }: Props) {
   // Draw routes imperatively — wipe + redraw on every change (no ghost lines)
   useEffect(() => {
     if (!mapRef.current) return;
-    const ROUTE_COLORS = ["#4361EE", "#F5A623", "#00C2A8"];
 
     // clear previous
     polylinesRef.current.forEach((p) => p.setMap(null));
@@ -251,8 +289,126 @@ export default function CreateMap({ trips, picking, onMapPick }: Props) {
         ))}
 
         {trips.map((t, i) => {
+          // Route midpoint label
+          const midLabel = (() => {
+            if (!t.routeCoordinates || t.routeCoordinates.length < 2)
+              return null;
+            const mid =
+              t.routeCoordinates[Math.floor(t.routeCoordinates.length / 2)];
+            const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+            return (
+              <Marker
+                key={`label-${t.id}`}
+                position={{ lat: mid[0], lng: mid[1] }}
+                icon={{
+                  url: routeLabelSvg(`Trip ${i + 1}`, color),
+                  scaledSize: new google.maps.Size(58, 22),
+                  anchor: new google.maps.Point(29, 11),
+                }}
+                clickable={false}
+                zIndex={5}
+              />
+            );
+          })();
+
           return (
             <span key={t.id}>
+              {midLabel}
+
+              {/* Walking polylines for shared trips (dashed amber) */}
+              {isSharedVehicle(t.vehicleType) &&
+                t.pickup &&
+                t.pickupStation && (
+                  <Polyline
+                    path={[
+                      { lat: t.pickup.lat, lng: t.pickup.lng },
+                      { lat: t.pickupStation.lat, lng: t.pickupStation.lng },
+                    ]}
+                    options={{
+                      strokeColor: "#F5A623",
+                      strokeOpacity: 0,
+                      strokeWeight: 3,
+                      zIndex: 1,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M 0,-1 0,1",
+                            strokeOpacity: 0.9,
+                            scale: 3,
+                            strokeColor: "#F5A623",
+                          },
+                          offset: "0",
+                          repeat: "10px",
+                        },
+                      ],
+                    }}
+                  />
+                )}
+              {isSharedVehicle(t.vehicleType) &&
+                t.dropoff &&
+                t.dropoffStation && (
+                  <Polyline
+                    path={[
+                      { lat: t.dropoffStation.lat, lng: t.dropoffStation.lng },
+                      { lat: t.dropoff.lat, lng: t.dropoff.lng },
+                    ]}
+                    options={{
+                      strokeColor: "#F5A623",
+                      strokeOpacity: 0,
+                      strokeWeight: 3,
+                      zIndex: 1,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M 0,-1 0,1",
+                            strokeOpacity: 0.9,
+                            scale: 3,
+                            strokeColor: "#F5A623",
+                          },
+                          offset: "0",
+                          repeat: "10px",
+                        },
+                      ],
+                    }}
+                  />
+                )}
+
+              {/* Station markers */}
+              {isSharedVehicle(t.vehicleType) && t.pickupStation && (
+                <Marker
+                  position={{
+                    lat: t.pickupStation.lat,
+                    lng: t.pickupStation.lng,
+                  }}
+                  icon={{
+                    url: STATION_ICON,
+                    scaledSize: new google.maps.Size(22, 22),
+                    anchor: new google.maps.Point(11, 11),
+                  }}
+                  title={t.pickupStation.name}
+                  clickable={false}
+                  zIndex={8 + i}
+                />
+              )}
+              {isSharedVehicle(t.vehicleType) &&
+                t.dropoffStation &&
+                t.dropoffStation.lat !== t.pickupStation?.lat && (
+                  <Marker
+                    position={{
+                      lat: t.dropoffStation.lat,
+                      lng: t.dropoffStation.lng,
+                    }}
+                    icon={{
+                      url: STATION_ICON,
+                      scaledSize: new google.maps.Size(22, 22),
+                      anchor: new google.maps.Point(11, 11),
+                    }}
+                    title={t.dropoffStation.name}
+                    clickable={false}
+                    zIndex={8 + i}
+                  />
+                )}
+
               {/* Origin marker */}
               {t.pickup && (
                 <Marker
@@ -294,17 +450,39 @@ export default function CreateMap({ trips, picking, onMapPick }: Props) {
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
             background: "rgba(11,30,61,0.9)",
             color: "#fff",
             fontSize: 13,
             fontWeight: 600,
             padding: "8px 16px",
             borderRadius: 20,
-            pointerEvents: "none",
             whiteSpace: "nowrap",
           }}
         >
-          Click the map to set {picking.field}
+          <span style={{ pointerEvents: "none" }}>
+            Click the map to set {picking.field}
+          </span>
+          <button
+            type="button"
+            onClick={onCancelPick}
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "none",
+              borderRadius: 12,
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "2px 8px",
+              fontFamily: "inherit",
+              pointerEvents: "auto",
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
 

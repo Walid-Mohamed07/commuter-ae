@@ -1,5 +1,15 @@
 import { Schema, model, models, type InferSchemaType } from "mongoose";
 
+const SavedAddressSchema = new Schema(
+  {
+    label: { type: String, required: true, trim: true },
+    address: { type: String, required: true, trim: true },
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+  },
+  { _id: true },
+);
+
 const UserSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -18,6 +28,7 @@ const UserSchema = new Schema(
       unique: true,
       sparse: true,
     },
+    savedAddresses: { type: [SavedAddressSchema], default: [] },
   },
   { timestamps: true }, // createdAt, updatedAt
 );

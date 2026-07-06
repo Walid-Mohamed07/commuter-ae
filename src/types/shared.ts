@@ -3,6 +3,16 @@
  * All field names use snake_case to match the Laravel API response format directly.
  */
 
+// ── Saved addresses ──────────────────────────────────────────────────────────
+
+export interface SavedAddress {
+  _id: string;
+  label: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 // ── Primitive unions ─────────────────────────────────────────────────────────
 
 export type RideType = "shared" | "private";
