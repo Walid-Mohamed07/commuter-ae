@@ -35,10 +35,10 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
   taxi_shared: {
     key: "taxi_shared",
     label: "Shared Taxi",
-    rate: 9,
+    rate: 10,
     ride: "shared",
     buffer: 30,
-    window: 15,
+    window: 20,
   },
   van_shared: {
     key: "van_shared",
@@ -46,15 +46,15 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     rate: 7,
     ride: "shared",
     buffer: 45,
-    window: 20,
+    window: 25,
   },
   microbus_shared: {
     key: "microbus_shared",
     label: "Microbus",
-    rate: 5,
+    rate: 4,
     ride: "shared",
     buffer: 45,
-    window: 25,
+    window: 30,
   },
 };
 
@@ -83,32 +83,39 @@ export function finalPrice(
   vehicleType: VehicleKey,
 ): number {
   const n = extraPassengers;
-  const r = (factor: number) => Math.round(basePrice * (n + 1) * factor);
+  // const r = (factor: number) => Math.round(basePrice * (n + 1) * factor);
+  const r = (factor: number) => Math.round(basePrice + basePrice * factor);
 
-  if (vehicleType === "taxi_shared") {
-    if (n === 1) return r(0.75);
+  if (vehicleType === "private_car" || vehicleType === "taxi_private") {
+    if (n === 1) return r(0.25);
     if (n === 2) return r(0.5);
     return basePrice;
   }
 
+  if (vehicleType === "taxi_shared") {
+    if (n === 1) return r(0.5);
+    if (n === 2) return r(1);
+    return basePrice;
+  }
+
   if (vehicleType === "van_shared") {
-    if (n === 1) return r(0.9);
-    if (n === 2) return r(0.8);
-    if (n === 3) return r(0.65);
-    if (n === 4) return r(0.5);
+    if (n === 1) return r(0.5);
+    if (n === 2) return r(1);
+    if (n === 3) return r(1.5);
+    if (n === 4) return r(2);
     return basePrice;
   }
 
   if (vehicleType === "microbus_shared") {
-    if (n === 1) return r(0.95);
-    if (n === 2) return r(0.9);
-    if (n === 3) return r(0.85);
-    if (n === 4) return r(0.8);
-    if (n === 5) return r(0.75);
-    if (n === 6) return r(0.7);
-    if (n === 7) return r(0.65);
-    if (n === 8) return r(0.6);
-    if (n === 9) return r(0.55);
+    if (n === 1) return r(0.5);
+    if (n === 2) return r(1);
+    if (n === 3) return r(1.5);
+    if (n === 4) return r(2);
+    if (n === 5) return r(2.5);
+    if (n === 6) return r(3);
+    if (n === 7) return r(3.5);
+    if (n === 8) return r(4);
+    if (n === 9) return r(4.5);
     return basePrice;
   }
 

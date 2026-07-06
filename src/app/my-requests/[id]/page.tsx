@@ -1,6 +1,14 @@
 import { redirect, notFound } from "next/navigation";
 import { Types } from "mongoose";
-import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
+import {
+  Car,
+  MapPin,
+  Clock,
+  Route,
+  Users,
+  CalendarDays,
+  Notebook,
+} from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
@@ -352,7 +360,7 @@ export default async function RequestDetailPage({
                     <Detail
                       icon={<Car size={15} color="#0B1E3D" />}
                       label="Vehicle"
-                      value={`${vLabel} · ${t.rideType}`}
+                      value={`${vLabel}  (${t.rideType})`}
                     />
                     <Detail
                       icon={<Users size={15} color="#0B1E3D" />}
@@ -372,14 +380,27 @@ export default async function RequestDetailPage({
                     <Detail
                       icon={<Route size={15} color="#0B1E3D" />}
                       label="Distance"
-                      value={`${t.distanceKm} km`}
+                      value={`+${t.distanceKm} km`}
                     />
                     <Detail
                       icon={<Clock size={15} color="#0B1E3D" />}
                       label="Drive time"
-                      value={`${t.durationMinutes} min`}
+                      value={`+${t.durationMinutes} min`}
                     />
                   </div>
+                  {status === "pending_payment" ||
+                  status === "submitted" ||
+                  status === "matching" ? (
+                    <div className="mt-3">
+                      <Detail
+                        icon={<Notebook size={15} color="#0B1E3D" />}
+                        label="Note"
+                        value={
+                          "The exact Arrival time, Distance and Drive time will be calculated after a driver is assigned."
+                        }
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -443,7 +464,7 @@ function Detail({
             fontSize: 14,
             color: "#0B1E3D",
             fontWeight: 600,
-            textTransform: "capitalize",
+            // textTransform: "capitalize",
           }}
         >
           {value}

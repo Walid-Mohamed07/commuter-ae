@@ -1,7 +1,16 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Eye, Car, MapPin, Flag, Clock, Route } from "lucide-react";
+import {
+  Plus,
+  Eye,
+  Car,
+  MapPin,
+  Flag,
+  Clock,
+  Route,
+  Users,
+} from "lucide-react";
 import { useTripStore } from "@/lib/store/useTripStore";
 import type { TripPoint } from "@/lib/store/useTripStore";
 import AppHeader from "@/components/layout/AppHeader";
@@ -9,9 +18,12 @@ import DatePicker from "./DatePicker";
 import TripCycle, { type TripData } from "./TripCycle";
 import { format, addDays, startOfDay } from "date-fns";
 import CreateMap from "./CreateMap";
+import type { SavedAddress } from "@/types/shared";
+import type { Station } from "@/lib/geo/stations";
 
 interface Props {
   userEmail: string;
+  onAddressSaved?: (saved: SavedAddress) => void;
 }
 
 function makeTripId() {
@@ -34,6 +46,10 @@ function defaultTrip(
     priceEgp: null,
     routeCoordinates: null,
     extraPassengers: 0,
+    pickupStation: null,
+    dropoffStation: null,
+    walkingMinToStation: null,
+    walkingMinFromStation: null,
   };
 }
 
@@ -47,6 +63,10 @@ export default function CreateClient({ userEmail }: Props) {
   const [submitError, setSubmitError] = useState("");
   const [payMethod, setPayMethod] = useState<"card" | "wallet">("card");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [agreedTerms, setAgreedTerms] = useState(false);
   const [picking, setPicking] = useState<{
     tripId: string;
     field: "pickup" | "dropoff";
@@ -59,9 +79,23 @@ export default function CreateClient({ userEmail }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load wallet balance so we can offer it as a payment method.
-  // Reconcile first so any top-up Kashier confirmed but we missed is credited
-  // before the balance is shown.
+  // Load wallet balance, saved addresses, and transit stations
+  useEffect(() => {
+    fetch("/geo/Points.geojson")
+      .then((r) => r.json())
+      .then((fc) => {
+        const s: Station[] = (fc.features as any[]).map((f) => ({
+          id: f.id as number,
+          name: (f.properties.Name as string) ?? "",
+          lat: f.geometry.coordinates[1] as number,
+          lng: f.geometry.coordinates[0] as number,
+          popupInfo: (f.properties.PopupInfo as string) ?? "",
+        }));
+        setStations(s);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -74,6 +108,15 @@ export default function CreateClient({ userEmail }: Props) {
         if (r.ok) {
           const d = await r.json();
           setWalletBalance(d.balanceEgp);
+        }
+      } catch {
+        /* non-fatal */
+      }
+      try {
+        const r = await fetch("/api/auth/addresses", { cache: "no-store" });
+        if (r.ok) {
+          const d = await r.json();
+          setSavedAddresses(d.savedAddresses ?? []);
         }
       } catch {
         /* non-fatal */
@@ -112,6 +155,14 @@ export default function CreateClient({ userEmail }: Props) {
             distanceKm: t.distanceKm,
             durationMinutes: t.durationMinutes,
             extraPassengers: t.extraPassengers,
+            ...(t.pickupStation
+              ? {
+                  pickupStation: t.pickupStation,
+                  dropoffStation: t.dropoffStation,
+                  walkingMinToStation: t.walkingMinToStation,
+                  walkingMinFromStation: t.walkingMinFromStation,
+                }
+              : {}),
           })),
         }),
       });
@@ -166,7 +217,53 @@ export default function CreateClient({ userEmail }: Props) {
   }
 
   const updateTrip = useCallback((id: string, updated: TripData) => {
-    setTrips((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    setTrips((prev) => {
+      const tripIndex = prev.findIndex((t) => t.id === id);
+
+      // Exclusive: only one trip can be a return trip at a time
+      if (updated.returnTrip) {
+        return prev.map((t) =>
+          t.id === id ? updated : { ...t, returnTrip: false },
+        );
+      }
+
+      // Sync the immediate next trip if it has returnTrip: true
+      // and this trip's pickup or dropoff just changed
+      const pickupChanged =
+        JSON.stringify(updated.pickup) !==
+        JSON.stringify(prev[tripIndex]?.pickup);
+      const dropoffChanged =
+        JSON.stringify(updated.dropoff) !==
+        JSON.stringify(prev[tripIndex]?.dropoff);
+
+      if (pickupChanged || dropoffChanged) {
+        const nextTrip = prev[tripIndex + 1];
+        if (nextTrip?.returnTrip) {
+          return prev.map((t, idx) => {
+            if (t.id === id) return updated;
+            if (idx === tripIndex + 1) {
+              return {
+                ...t,
+                pickup: updated.dropoff,
+                dropoff: updated.pickup,
+                distanceKm: null,
+                durationMinutes: null,
+                priceEgp: null,
+                pickupTime: "",
+                routeCoordinates: null,
+                pickupStation: null,
+                dropoffStation: null,
+                walkingMinToStation: null,
+                walkingMinFromStation: null,
+              };
+            }
+            return t;
+          });
+        }
+      }
+
+      return prev.map((t) => (t.id === id ? updated : t));
+    });
   }, []);
 
   const removeTrip = useCallback((id: string) => {
@@ -174,7 +271,8 @@ export default function CreateClient({ userEmail }: Props) {
   }, []);
 
   function addTrip() {
-    setTrips((prev) => [...prev, defaultTrip(null, null)]);
+    const vehicleType = trips[0]?.vehicleType ?? "private_car";
+    setTrips((prev) => [...prev, { ...defaultTrip(null, null), vehicleType }]);
   }
 
   // Validate all trips before preview
@@ -186,6 +284,16 @@ export default function CreateClient({ userEmail }: Props) {
       if (!t.arrivalTime) return `Trip ${i + 1}: arrival time required.`;
       if (!t.pickupTime)
         return `Trip ${i + 1}: pickup time not yet computed — wait a moment.`;
+      // Time ordering: each trip must arrive after the previous trip
+      if (i > 0) {
+        const prev = trips[i - 1];
+        if (
+          prev.arrivalTime &&
+          toMinutes(t.arrivalTime) <= toMinutes(prev.arrivalTime)
+        ) {
+          return `Trip ${i + 1}: arrival time must be after trip ${i} ends (${to12h(prev.arrivalTime)}).`;
+        }
+      }
     }
     return null;
   }
@@ -199,6 +307,7 @@ export default function CreateClient({ userEmail }: Props) {
       return;
     }
     setValidationError("");
+    setAgreedTerms(false);
     setShowPreview(true);
   }
 
@@ -288,20 +397,52 @@ export default function CreateClient({ userEmail }: Props) {
 
             {/* Trip cycles */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {trips.map((trip, i) => (
-                <TripCycle
-                  key={trip.id}
-                  data={trip}
-                  index={i}
-                  canRemove={trips.length > 1}
-                  onChange={(updated) => updateTrip(trip.id, updated)}
-                  onRemove={() => removeTrip(trip.id)}
-                  picking={picking?.tripId === trip.id ? picking.field : null}
-                  onPickFromMap={(field) =>
-                    setPicking({ tripId: trip.id, field })
+              {trips.map((trip, i) => {
+                // Minimum arrival time = prev trip's arrival + this trip's drive + buffer
+                let minArrivalTime: string | null = null;
+                if (i > 0) {
+                  const prev = trips[i - 1];
+                  if (prev.arrivalTime) {
+                    const prevMins = toMinutes(prev.arrivalTime);
+                    if (trip.durationMinutes) {
+                      const vWindow = VEHICLES[trip.vehicleType].window;
+                      minArrivalTime = toHHMM(
+                        prevMins + trip.durationMinutes + vWindow,
+                      );
+                    } else {
+                      minArrivalTime = toHHMM(prevMins + 1);
+                    }
                   }
-                />
-              ))}
+                }
+                // Return trip source = immediately preceding trip.
+                // Hide checkbox if prev trip is itself a return trip.
+                const prevTrip = i > 0 ? trips[i - 1] : null;
+                const canBeReturn =
+                  !!prevTrip &&
+                  !prevTrip.returnTrip &&
+                  !!(prevTrip.pickup && prevTrip.dropoff);
+                return (
+                  <TripCycle
+                    key={trip.id}
+                    data={trip}
+                    index={i}
+                    canRemove={trips.length > 1}
+                    onChange={(updated) => updateTrip(trip.id, updated)}
+                    onRemove={() => removeTrip(trip.id)}
+                    picking={picking?.tripId === trip.id ? picking.field : null}
+                    onPickFromMap={(field) =>
+                      setPicking({ tripId: trip.id, field })
+                    }
+                    sourceTripData={canBeReturn ? prevTrip : null}
+                    savedAddresses={savedAddresses}
+                    onAddressSaved={(s) =>
+                      setSavedAddresses((prev) => [...prev, s])
+                    }
+                    stations={stations}
+                    minArrivalTime={minArrivalTime}
+                  />
+                );
+              })}
             </div>
 
             {/* Add trip */}
@@ -434,6 +575,7 @@ export default function CreateClient({ userEmail }: Props) {
             trips={trips}
             picking={picking}
             onMapPick={handleMapPick}
+            onCancelPick={() => setPicking(null)}
           />
         </main>
       </div>
@@ -573,6 +715,20 @@ export default function CreateClient({ userEmail }: Props) {
                         gap: 8,
                       }}
                     >
+                      <Users size={15} color="#0B1E3D" />
+
+                      <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
+                        {t.extraPassengers} Extra passenger
+                        {t.extraPassengers === 1 ? "" : "s"}
+                      </strong>
+                    </span>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
                       <Car
                         size={15}
                         color="#0B1E3D"
@@ -653,6 +809,131 @@ export default function CreateClient({ userEmail }: Props) {
                       </span>
                     )}
                   </div>
+
+                  {/* Per-trip instructions */}
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      background: "rgba(245,166,35,0.07)",
+                      border: "1px solid rgba(245,166,35,0.35)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: "#0B1E3D",
+                        margin: "0 0 6px",
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      ⚠️ Instructions & Conditions
+                    </p>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                      }}
+                    >
+                      <li
+                        style={{
+                          fontSize: 12,
+                          color: "#0B1E3D",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Be punctual — driver will not wait beyond the allowed
+                        time.
+                      </li>
+                      <li
+                        style={{
+                          fontSize: 12,
+                          color: "#e74c3c",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Only declared passengers may board (except for infants).
+                        All passengers are picked up and dropped off exclusively
+                        at the specified locations — no additional stops.
+                      </li>
+                      {(t.vehicleType === "van_shared" ||
+                        t.vehicleType === "microbus_shared") && (
+                        <>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#e74c3c",
+                              fontWeight: 700,
+                            }}
+                          >
+                            No extra baggage allowed
+                          </li>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#e74c3c",
+                              fontWeight: 700,
+                            }}
+                          >
+                            No waiting time for Van / Microbus — be at the
+                            pickup point on time.
+                          </li>
+                        </>
+                      )}
+                      {t.vehicleType === "taxi_shared" && (
+                        <>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#e74c3c",
+                              fontWeight: 600,
+                            }}
+                          >
+                            No extra baggage allowed
+                          </li>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#0B1E3D",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Shared Taxi: maximum waiting time is{" "}
+                            <strong>3 minutes</strong>.
+                          </li>
+                        </>
+                      )}
+                      {(t.vehicleType === "private_car" ||
+                        t.vehicleType === "taxi_private") && (
+                        <>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#0B1E3D",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Maximum waiting time: <strong>5 minutes</strong>.
+                          </li>
+                          <li
+                            style={{
+                              fontSize: 12,
+                              color: "#0B1E3D",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Maximum baggage: <strong>2 pieces</strong>.
+                          </li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               ))}
 
@@ -685,135 +966,195 @@ export default function CreateClient({ userEmail }: Props) {
                 </div>
               )}
 
-              {/* ── Instructions & guidance ── */}
-              {(() => {
-                const vehicleTypes = trips.map((t) => t.vehicleType);
-                const hasNoWait = vehicleTypes.some(
-                  (v) => v === "van_shared" || v === "microbus_shared",
-                );
-                const has5min = vehicleTypes.some(
-                  (v) => v === "private_car" || v === "taxi_private",
-                );
-                const has3min = vehicleTypes.some((v) => v === "taxi_shared");
-                return (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      padding: "14px 16px",
-                      background: "rgba(245,166,35,0.1)",
-                      border: "1.5px solid #F5A623",
-                      borderRadius: 12,
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        fontWeight: 800,
-                        fontSize: 13,
-                        color: "#0B1E3D",
-                        marginBottom: 8,
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      ⚠️ Instructions &amp; guidance
-                    </span>
-                    <ul
-                      style={{
-                        margin: 0,
-                        paddingLeft: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 5,
-                      }}
-                    >
-                      <li
-                        style={{
-                          fontSize: 13,
-                          color: "#0B1E3D",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Please be punctual — drivers will not wait beyond the
-                        allowed time.
-                      </li>
-                      {hasNoWait && (
-                        <li
-                          style={{
-                            fontSize: 13,
-                            color: "#e74c3c",
-                            fontWeight: 700,
-                          }}
-                        >
-                          No waiting time allowed for Van / Microbus rides — be
-                          at the pickup point on time.
-                        </li>
-                      )}
-                      {has3min && (
-                        <li
-                          style={{
-                            fontSize: 13,
-                            color: "#0B1E3D",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Shared Taxi: maximum waiting time is{" "}
-                          <strong>3 minutes</strong>.
-                        </li>
-                      )}
-                      {has5min && (
-                        <>
-                          <li
-                            style={{
-                              fontSize: 13,
-                              color: "#0B1E3D",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Private Car / Private Taxi: Maximum waiting time is{" "}
-                            <strong>5 minutes</strong>.
-                          </li>
-                          <li
-                            style={{
-                              fontSize: 13,
-                              color: "#0B1E3D",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Private Car / Private Taxi: Maximum baggage load is{" "}
-                            <strong>2 pieces</strong>.
-                          </li>
-                        </>
-                      )}
-                    </ul>
-                  </div>
-                );
-              })()}
-
-              {submitError && (
-                <p
-                  role="alert"
-                  aria-live="assertive"
+              {/* ── Terms & conditions ── */}
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "14px 16px",
+                  background: "#f8f9fa",
+                  borderRadius: 12,
+                  border: "1.5px solid #eef0f3",
+                }}
+              >
+                <label
                   style={{
-                    fontSize: 13,
-                    color: "#e74c3c",
-                    background: "rgba(231,76,60,0.07)",
-                    border: "1px solid rgba(231,76,60,0.2)",
-                    borderRadius: 8,
-                    padding: "10px 14px",
-                    marginTop: 12,
-                    marginBottom: 0,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    cursor: "pointer",
                   }}
                 >
-                  {submitError}
-                </p>
-              )}
+                  <input
+                    type="checkbox"
+                    checked={agreedTerms}
+                    onChange={(e) => setAgreedTerms(e.target.checked)}
+                    style={{
+                      marginTop: 2,
+                      width: 16,
+                      height: 16,
+                      accentColor: "#00C2A8",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: "#0B1E3D",
+                      fontWeight: 600,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    I have read and agree to all the instructions, conditions,
+                    and trip details above and confirm they are correct.
+                  </span>
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPreview(false);
+                  setShowPaymentModal(true);
+                }}
+                disabled={!agreedTerms}
+                style={{
+                  marginTop: 14,
+                  width: "100%",
+                  height: 52,
+                  background: agreedTerms ? "#0B1E3D" : "#d0d8e0",
+                  color: agreedTerms ? "#ffffff" : "#9aa5b4",
+                  fontWeight: 700,
+                  fontSize: 15,
+                  border: "none",
+                  borderRadius: 12,
+                  cursor: agreedTerms ? "pointer" : "not-allowed",
+                  fontFamily: "inherit",
+                  transition: "background 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  if (agreedTerms) e.currentTarget.style.background = "#00C2A8";
+                }}
+                onMouseLeave={(e) => {
+                  if (agreedTerms) e.currentTarget.style.background = "#0B1E3D";
+                }}
+              >
+                Confirm the request →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment modal ── */}
+      {showPaymentModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Payment"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            background: "rgba(11,30,61,0.55)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowPaymentModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "20px 20px 0 0",
+              width: "100%",
+              maxWidth: 520,
+              maxHeight: "70dvh",
+              overflowY: "auto",
+              padding: "0 0 32px",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px 24px 0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 800,
+                  color: "#0B1E3D",
+                  margin: 0,
+                }}
+              >
+                Payment
+              </h2>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                aria-label="Close payment"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#5A6A7A",
+                  padding: 4,
+                  minWidth: 36,
+                  minHeight: 36,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: "16px 24px 0" }}>
+              {/* Total recap */}
+              <div
+                style={{
+                  padding: "12px 14px",
+                  background: "#f8f9fa",
+                  borderRadius: 12,
+                  border: "1.5px solid #eef0f3",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 18,
+                }}
+              >
+                <span
+                  style={{ fontSize: 14, fontWeight: 600, color: "#5A6A7A" }}
+                >
+                  Total amount
+                </span>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 900,
+                    color: "#0B1E3D",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {totalEgp} EGP
+                </span>
+              </div>
 
               {/* Payment method */}
               {(() => {
                 const walletEnough =
                   walletBalance !== null && walletBalance >= totalEgp;
                 return (
-                  <div style={{ marginTop: 18 }}>
+                  <div>
                     <span
                       style={{
                         fontSize: 13,
@@ -920,6 +1261,25 @@ export default function CreateClient({ userEmail }: Props) {
                 );
               })()}
 
+              {submitError && (
+                <p
+                  role="alert"
+                  aria-live="assertive"
+                  style={{
+                    fontSize: 13,
+                    color: "#e74c3c",
+                    background: "rgba(231,76,60,0.07)",
+                    border: "1px solid rgba(231,76,60,0.2)",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    marginTop: 12,
+                    marginBottom: 0,
+                  }}
+                >
+                  {submitError}
+                </p>
+              )}
+
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -997,8 +1357,9 @@ export default function CreateClient({ userEmail }: Props) {
 }
 
 /* ── Helpers local to this file ── */
-import { VEHICLE_LIST, finalPrice } from "@/lib/config/vehicles";
+import { VEHICLE_LIST, finalPrice, VEHICLES } from "@/lib/config/vehicles";
 import { formatDisplayName } from "@/lib/nominatim";
+import { toMinutes, toHHMM } from "@/lib/time/pickupWindow";
 
 function VEHICLE_LIST_LABEL(key: string) {
   return VEHICLE_LIST.find((v) => v.key === key)?.label ?? key;

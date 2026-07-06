@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { User } from "@/models/User";
 import ProfileClient from "./ProfileClient";
+import type { SavedAddress } from "@/types/shared";
 
 export const metadata = { title: "Profile — Commuter" };
 
@@ -12,8 +13,13 @@ export default async function ProfilePage() {
 
   await connectDB();
   const user = await User.findById(session.userId)
-    .select("name email phone")
-    .lean<{ name: string; email: string; phone?: string }>();
+    .select("name email phone savedAddresses")
+    .lean<{
+      name: string;
+      email: string;
+      phone?: string;
+      savedAddresses?: SavedAddress[];
+    }>();
 
   if (!user) redirect("/login");
 
@@ -22,6 +28,7 @@ export default async function ProfilePage() {
       initialName={user.name}
       email={user.email}
       initialPhone={user.phone ?? ""}
+      initialSavedAddresses={user.savedAddresses ?? []}
     />
   );
 }
