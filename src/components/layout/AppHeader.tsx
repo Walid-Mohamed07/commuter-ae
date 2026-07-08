@@ -15,23 +15,33 @@ import {
   LogOut,
   LogIn,
   CalendarPlus,
+  CalendarClock,
 } from "lucide-react";
 import { useTripStore } from "@/lib/store/useTripStore";
 
 type Variant = "landing" | "app";
+type Role = "passenger" | "driver";
 
 interface Props {
   authed: boolean;
   email?: string;
   variant?: Variant;
+  role?: Role;
   /** Optional back-arrow target (app variant only). */
   backHref?: string;
 }
 
-const NAV_LINKS = [
+const PASSENGER_NAV_LINKS = [
   { href: "/create", label: "Book", icon: CalendarPlus },
   { href: "/my-requests", label: "My requests", icon: FileText },
   { href: "/my-trips", label: "My trips", icon: History },
+  { href: "/wallet", label: "Wallet", icon: Wallet },
+  { href: "/profile", label: "Profile", icon: User },
+] as const;
+
+const DRIVER_NAV_LINKS = [
+  { href: "/my-trips", label: "My trips", icon: History },
+  { href: "/availability", label: "Availability", icon: CalendarClock },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
@@ -40,11 +50,13 @@ export default function AppHeader({
   authed,
   email,
   variant = "app",
+  role = "passenger",
   backHref,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { clear } = useTripStore();
+  const NAV_LINKS = role === "driver" ? DRIVER_NAV_LINKS : PASSENGER_NAV_LINKS;
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);

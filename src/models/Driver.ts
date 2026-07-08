@@ -1,0 +1,53 @@
+import { Schema, model, models, Types, type InferSchemaType } from "mongoose";
+
+const DriverDocumentsSchema = new Schema(
+  {
+    nationalIdFront: { type: String, default: null },
+    nationalIdBack: { type: String, default: null },
+    drivingLicense: { type: String, default: null },
+    carLicenseFront: { type: String, default: null },
+    carLicenseBack: { type: String, default: null },
+    criminalRecord: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const DriverSchema = new Schema(
+  {
+    userId: {
+      type: Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+      index: true,
+    },
+    gender: { type: String, required: true, enum: ["male", "female"] },
+
+    // ── Driver details (filled in later via /profile) ──
+    carType: {
+      type: String,
+      enum: ["private", "taxi", "van", "microbus"],
+    },
+    vehicleName: { type: String, trim: true },
+    vehicleColor: { type: String, trim: true },
+    licensePlate: { type: String, trim: true },
+    licenseExpiry: { type: String }, // "YYYY-MM-DD"
+    carCapacity: { type: Number }, // server-derived from carType
+
+    // "incomplete" until vehicle details + all documents are filled in and the
+    // driver submits for review; "pending" awaits manual admin approval;
+    // "verified" once approved. Source of truth for driver verification.
+    verificationStatus: {
+      type: String,
+      required: true,
+      default: "incomplete",
+      enum: ["incomplete", "pending", "verified"],
+    },
+
+    documents: { type: DriverDocumentsSchema, default: () => ({}) },
+  },
+  { timestamps: true }, // createdAt = "Profile since"
+);
+
+export type DriverDoc = InferSchemaType<typeof DriverSchema>;
+export const Driver = models.Driver || model("Driver", DriverSchema);

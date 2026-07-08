@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
 
     const existing = await User.findOne({
       phone: phone.trim(),
+      role: "passenger",
     }).lean();
     if (existing)
       return NextResponse.json(
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
     if (email?.trim()) {
       const existingEmail = await User.findOne({
         email: email.toLowerCase().trim(),
+        role: "passenger",
       }).lean();
       if (existingEmail)
         return NextResponse.json(
@@ -52,9 +54,14 @@ export async function POST(req: NextRequest) {
       phone: phone.trim(),
       passwordHash,
       email: email?.trim() ? email.toLowerCase().trim() : undefined,
+      role: "passenger",
     });
 
-    await createSession({ userId: String(user._id), email: user.email ?? "" });
+    await createSession({
+      userId: String(user._id),
+      email: user.email ?? "",
+      role: "passenger",
+    });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json(

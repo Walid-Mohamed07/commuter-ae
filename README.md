@@ -34,3 +34,27 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## API usage (dev)
+
+When calling API routes from Windows PowerShell or CMD, ensure JSON quotes preserved.
+
+- PowerShell (recommended):
+
+```powershell
+curl.exe -v -X POST "http://localhost:3000/api/auth/signUpDriver" -H "Content-Type: application/json" -d '{ "name": "Test Driver", "phone": "+201000000000", "password": "password123", "email": "test@example.com", "gender": "male" }'
+```
+
+- CMD (escape inner quotes):
+
+```cmd
+curl -v -X POST "http://localhost:3000/api/auth/signUpDriver" -H "Content-Type: application/json" -d "{\"name\":\"Test Driver\",\"phone\":\"+201000000000\",\"password\":\"password123\",\"email\":\"test@example.com\",\"gender\":\"male\"}"
+```
+
+- Bash / WSL / macOS:
+
+```bash
+curl -v -X POST http://localhost:3000/api/auth/signUpDriver -H "Content-Type: application/json" -d '{"name":"Test Driver","phone":"+201000000000","password":"password123","email":"test@example.com","gender":"male"}'
+```
+
+Notes: If server logs invalid JSON like `{name:Test Driver,...}` your shell stripped quotes; use examples above or use Node script `scripts/test_signUpDriver.js` or Postman.
