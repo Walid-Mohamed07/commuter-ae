@@ -13,24 +13,34 @@ const SavedAddressSchema = new Schema(
 const UserSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
+    role: {
+      type: String,
+      required: true,
+      default: "passenger",
+      enum: ["passenger", "driver"],
+    },
     phone: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
-      index: true,
     },
     passwordHash: { type: String, required: true },
     email: {
       type: String,
       lowercase: true,
       trim: true,
-      unique: true,
-      sparse: true,
     },
     savedAddresses: { type: [SavedAddressSchema], default: [] },
   },
   { timestamps: true }, // createdAt, updatedAt
+);
+
+// Same phone/email may exist once per role (one person can hold a passenger
+// account and a separate driver account).
+UserSchema.index({ phone: 1, role: 1 }, { unique: true });
+UserSchema.index(
+  { email: 1, role: 1 },
+  { unique: true, partialFilterExpression: { email: { $type: "string" } } },
 );
 
 export type UserDoc = InferSchemaType<typeof UserSchema>;

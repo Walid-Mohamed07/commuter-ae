@@ -11,9 +11,12 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+export type UserRole = "passenger" | "driver";
+
 export interface SessionPayload {
   userId: string;
   email: string;
+  role: UserRole;
 }
 
 /** Sign a JWT and set it as an httpOnly cookie. Call only from route handlers / server actions. */
@@ -41,7 +44,11 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    return { userId: payload.userId as string, email: payload.email as string };
+    return {
+      userId: payload.userId as string,
+      email: payload.email as string,
+      role: (payload.role as UserRole) ?? "passenger",
+    };
   } catch {
     return null;
   }

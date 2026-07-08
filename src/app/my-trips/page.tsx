@@ -131,6 +131,45 @@ export default async function MyTripsPage({
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-trips");
 
+  if (session.role === "driver") {
+    return (
+      <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
+        <AppHeader
+          authed
+          email={session.email}
+          role="driver"
+          variant="app"
+          backHref="/"
+        />
+        <main
+          style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
+        >
+          <div style={{ marginBottom: 22 }}>
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: "#0B1E3D",
+                margin: "0 0 4px",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              My trips
+            </h1>
+            <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
+              Trips assigned to you will appear here.
+            </p>
+          </div>
+          <EmptyState
+            icon="🚗"
+            title="No assigned trips yet"
+            description="Once a trip is assigned to you, it will show up here."
+          />
+        </main>
+      </div>
+    );
+  }
+
   const params = await searchParams;
   const payment =
     typeof params.payment === "string" ? params.payment : undefined;

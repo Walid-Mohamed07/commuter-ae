@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,41 +13,45 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import Image from "next/image";
+import DriverRegisterForm from "@/components/auth/DriverRegisterForm";
 
 type Mode = "login" | "register";
+type Role = "passenger" | "driver";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const redirect = params.get("redirect") ?? "/create";
 
+  const [role, setRole] = useState<Role>("passenger");
   const [mode, setMode] = useState<Mode>("login");
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
 
-  // Fields
-  const nameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
-  const phoneRef = useRef<HTMLInputElement>(null);
+  // Fields — controlled + shared across role/mode switches so nothing is wiped.
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [gender, setGender] = useState<"male" | "female" | "">("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const email = emailRef.current?.value.trim() ?? "";
-    const password = passwordRef.current?.value ?? "";
-    const name = nameRef.current?.value.trim() ?? "";
-    const phone = phoneRef.current?.value.trim() ?? "";
-
     try {
       const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
       const body =
         mode === "login"
-          ? { phone, password }
-          : { name, phone, password, email };
+          ? { phone: phone.trim(), password, role }
+          : {
+              name: name.trim(),
+              phone: phone.trim(),
+              password,
+              email: email.trim(),
+            };
 
       const res = await fetch(url, {
         method: "POST",
@@ -62,6 +66,12 @@ function LoginForm() {
         return;
       }
 
+      if (mode === "login" && role === "driver") {
+        router.replace(
+          data.verificationStatus === "verified" ? "/my-trips" : "/profile",
+        );
+        return;
+      }
       router.replace(redirect);
     } catch {
       setError("Network error. Please check your connection.");
@@ -180,6 +190,49 @@ function LoginForm() {
           </Link>
         </div>
 
+        {/* Role switcher */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            background: "#eef2f5",
+            borderRadius: 12,
+            padding: 4,
+            marginBottom: 12,
+          }}
+          role="tablist"
+          aria-label="Passenger or driver"
+        >
+          {(["passenger", "driver"] as Role[]).map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="tab"
+              aria-selected={role === r}
+              onClick={() => {
+                setRole(r);
+                setMode("login");
+                setError("");
+              }}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 9,
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: 14,
+                fontFamily: "inherit",
+                background: role === r ? "#0B1E3D" : "transparent",
+                color: role === r ? "#ffffff" : "#5A6A7A",
+                transition: "all 0.2s",
+                minHeight: 44,
+              }}
+            >
+              {r === "passenger" ? "Passenger" : "Driver"}
+            </button>
+          ))}
+        </div>
+
         {/* Mode tabs */}
         <div
           style={{
@@ -196,6 +249,7 @@ function LoginForm() {
           {(["login", "register"] as Mode[]).map((m) => (
             <button
               key={m}
+              type="button"
               role="tab"
               aria-selected={mode === m}
               onClick={() => {
@@ -222,13 +276,73 @@ function LoginForm() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Name (register only) */}
-            {mode === "register" && (
+        {role === "driver" && mode === "register" ? (
+          <DriverRegisterForm
+            name={name}
+            setName={setName}
+            phone={phone}
+            setPhone={setPhone}
+            password={password}
+            setPassword={setPassword}
+            email={email}
+            setEmail={setEmail}
+            gender={gender}
+            setGender={setGender}
+            onSuccess={() => router.replace("/profile")}
+          />
+        ) : (
+          <form onSubmit={handleSubmit} noValidate>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Name (register only) */}
+              {mode === "register" && (
+                <div>
+                  <label
+                    htmlFor="name"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#0B1E3D",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Full name{" "}
+                    <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                      *
+                    </span>
+                  </label>
+                  <div
+                    style={fieldStyle}
+                    onFocusCapture={(e) =>
+                      focusField(e.currentTarget as HTMLDivElement)
+                    }
+                    onBlurCapture={(e) =>
+                      blurField(e.currentTarget as HTMLDivElement)
+                    }
+                  >
+                    <User
+                      size={17}
+                      style={{ color: "#5A6A7A", flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <input
+                      id="name"
+                      type="text"
+                      autoComplete="name"
+                      placeholder="Ahmed Mohamed"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Phone (primary) */}
               <div>
                 <label
-                  htmlFor="name"
+                  htmlFor="phone"
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
@@ -237,7 +351,7 @@ function LoginForm() {
                     marginBottom: 6,
                   }}
                 >
-                  Full name{" "}
+                  Phone{" "}
                   <span aria-hidden="true" style={{ color: "#e74c3c" }}>
                     *
                   </span>
@@ -251,152 +365,28 @@ function LoginForm() {
                     blurField(e.currentTarget as HTMLDivElement)
                   }
                 >
-                  <User
+                  <Phone
                     size={17}
                     style={{ color: "#5A6A7A", flexShrink: 0 }}
                     aria-hidden="true"
                   />
                   <input
-                    ref={nameRef}
-                    id="name"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="Ahmed Mohamed"
+                    id="phone"
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="+20 10 0000 0000"
                     required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                     style={inputStyle}
                   />
                 </div>
               </div>
-            )}
 
-            {/* Phone (primary) */}
-            <div>
-              <label
-                htmlFor="phone"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#0B1E3D",
-                  display: "block",
-                  marginBottom: 6,
-                }}
-              >
-                Phone{" "}
-                <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-                  *
-                </span>
-              </label>
-              <div
-                style={fieldStyle}
-                onFocusCapture={(e) =>
-                  focusField(e.currentTarget as HTMLDivElement)
-                }
-                onBlurCapture={(e) =>
-                  blurField(e.currentTarget as HTMLDivElement)
-                }
-              >
-                <Phone
-                  size={17}
-                  style={{ color: "#5A6A7A", flexShrink: 0 }}
-                  aria-hidden="true"
-                />
-                <input
-                  ref={phoneRef}
-                  id="phone"
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="+20 10 0000 0000"
-                  required
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label
-                htmlFor="password"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#0B1E3D",
-                  display: "block",
-                  marginBottom: 6,
-                }}
-              >
-                Password{" "}
-                <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-                  *
-                </span>
-              </label>
-              <div
-                style={fieldStyle}
-                onFocusCapture={(e) =>
-                  focusField(e.currentTarget as HTMLDivElement)
-                }
-                onBlurCapture={(e) =>
-                  blurField(e.currentTarget as HTMLDivElement)
-                }
-              >
-                <Lock
-                  size={17}
-                  style={{ color: "#5A6A7A", flexShrink: 0 }}
-                  aria-hidden="true"
-                />
-                <input
-                  ref={passwordRef}
-                  id="password"
-                  type={showPass ? "text" : "password"}
-                  autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
-                  }
-                  placeholder={
-                    mode === "register" ? "Min. 8 characters" : "••••••••"
-                  }
-                  required
-                  minLength={mode === "register" ? 8 : undefined}
-                  style={inputStyle}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((v) => !v)}
-                  aria-label={showPass ? "Hide password" : "Show password"}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "#5A6A7A",
-                    padding: 4,
-                    flexShrink: 0,
-                    minWidth: 32,
-                    minHeight: 32,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {mode === "register" && (
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#5A6A7A",
-                    marginTop: 5,
-                    marginBottom: 0,
-                  }}
-                >
-                  Must be at least 8 characters.
-                </p>
-              )}
-            </div>
-
-            {/* Email (register only, optional, last) */}
-            {mode === "register" && (
+              {/* Password */}
               <div>
                 <label
-                  htmlFor="email"
+                  htmlFor="password"
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
@@ -405,9 +395,9 @@ function LoginForm() {
                     marginBottom: 6,
                   }}
                 >
-                  Email address{" "}
-                  <span style={{ fontWeight: 400, color: "#5A6A7A" }}>
-                    (optional)
+                  Password{" "}
+                  <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                    *
                   </span>
                 </label>
                 <div
@@ -419,83 +409,167 @@ function LoginForm() {
                     blurField(e.currentTarget as HTMLDivElement)
                   }
                 >
-                  <Mail
+                  <Lock
                     size={17}
                     style={{ color: "#5A6A7A", flexShrink: 0 }}
                     aria-hidden="true"
                   />
                   <input
-                    ref={emailRef}
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
+                    id="password"
+                    type={showPass ? "text" : "password"}
+                    autoComplete={
+                      mode === "login" ? "current-password" : "new-password"
+                    }
+                    placeholder={
+                      mode === "register" ? "Min. 8 characters" : "••••••••"
+                    }
+                    required
+                    minLength={mode === "register" ? 8 : undefined}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     style={inputStyle}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((v) => !v)}
+                    aria-label={showPass ? "Hide password" : "Show password"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#5A6A7A",
+                      padding: 4,
+                      flexShrink: 0,
+                      minWidth: 32,
+                      minHeight: 32,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
+                {mode === "register" && (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#5A6A7A",
+                      marginTop: 5,
+                      marginBottom: 0,
+                    }}
+                  >
+                    Must be at least 8 characters.
+                  </p>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Error */}
-          {error && (
-            <p
-              role="alert"
-              aria-live="assertive"
+              {/* Email (register only, optional, last) */}
+              {mode === "register" && (
+                <div>
+                  <label
+                    htmlFor="email"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#0B1E3D",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Email address{" "}
+                    <span style={{ fontWeight: 400, color: "#5A6A7A" }}>
+                      (optional)
+                    </span>
+                  </label>
+                  <div
+                    style={fieldStyle}
+                    onFocusCapture={(e) =>
+                      focusField(e.currentTarget as HTMLDivElement)
+                    }
+                    onBlurCapture={(e) =>
+                      blurField(e.currentTarget as HTMLDivElement)
+                    }
+                  >
+                    <Mail
+                      size={17}
+                      style={{ color: "#5A6A7A", flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <input
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Error */}
+            {error && (
+              <p
+                role="alert"
+                aria-live="assertive"
+                style={{
+                  fontSize: 13,
+                  color: "#e74c3c",
+                  background: "rgba(231,76,60,0.07)",
+                  border: "1px solid rgba(231,76,60,0.2)",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  marginTop: 14,
+                  marginBottom: 0,
+                }}
+              >
+                {error}
+              </p>
+            )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
               style={{
-                fontSize: 13,
-                color: "#e74c3c",
-                background: "rgba(231,76,60,0.07)",
-                border: "1px solid rgba(231,76,60,0.2)",
-                borderRadius: 8,
-                padding: "10px 14px",
-                marginTop: 14,
-                marginBottom: 0,
+                marginTop: 20,
+                width: "100%",
+                height: 52,
+                background: loading ? "#5A6A7A" : "#0B1E3D",
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: 15,
+                border: "none",
+                borderRadius: 12,
+                cursor: loading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                fontFamily: "inherit",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) e.currentTarget.style.background = "#00C2A8";
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) e.currentTarget.style.background = "#0B1E3D";
               }}
             >
-              {error}
-            </p>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 20,
-              width: "100%",
-              height: 52,
-              background: loading ? "#5A6A7A" : "#0B1E3D",
-              color: "#ffffff",
-              fontWeight: 700,
-              fontSize: 15,
-              border: "none",
-              borderRadius: 12,
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              fontFamily: "inherit",
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              if (!loading) e.currentTarget.style.background = "#00C2A8";
-            }}
-            onMouseLeave={(e) => {
-              if (!loading) e.currentTarget.style.background = "#0B1E3D";
-            }}
-          >
-            {loading && (
-              <Loader2 size={18} className="spin" aria-hidden="true" />
-            )}
-            {loading
-              ? "Please wait…"
-              : mode === "login"
-                ? "Log in"
-                : "Create account"}
-          </button>
-        </form>
+              {loading && (
+                <Loader2 size={18} className="spin" aria-hidden="true" />
+              )}
+              {loading
+                ? "Please wait…"
+                : mode === "login"
+                  ? "Log in"
+                  : "Create account"}
+            </button>
+          </form>
+        )}
 
         {/* Switch mode */}
         <p

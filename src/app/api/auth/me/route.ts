@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
 import { User } from "@/models/User";
+import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
+import { carTypeToCapacity, type CarType } from "@/lib/config/driver";
 
 export async function GET() {
   const session = await getSession();
@@ -10,10 +12,20 @@ export async function GET() {
 
   await connectDB();
   const user = await User.findById(session.userId)
-    .select("name email phone")
+    .select("name email phone role")
     .lean();
   if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  return NextResponse.json(user);
+
+  if (session.role !== "driver") return NextResponse.json(user);
+
+  const driver = await Driver.findOne({ userId: session.userId }).lean();
+  if (!driver)
+    return NextResponse.json(
+      { error: "Driver profile not found." },
+      { status: 404 },
+    );
+
+  return NextResponse.json({ ...user, driver });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -22,7 +34,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { name, phone } = await req.json();
+    const body = await req.json();
+    const { name, phone } = body;
     if (!name?.trim())
       return NextResponse.json({ error: "Name is required." }, { status: 400 });
 
@@ -30,12 +43,60 @@ export async function PATCH(req: NextRequest) {
     const user = await User.findByIdAndUpdate(
       session.userId,
       { name: name.trim(), phone: phone?.trim() || undefined },
-      { new: true, select: "name email phone" },
+      { new: true, select: "name email phone role" },
     ).lean();
 
     if (!user)
       return NextResponse.json({ error: "User not found." }, { status: 404 });
-    return NextResponse.json(user);
+
+    if (session.role !== "driver") return NextResponse.json(user);
+
+    const {
+      gender,
+      carType,
+      vehicleName,
+      vehicleColor,
+      licensePlate,
+      licenseExpiry,
+      documents,
+    } = body;
+
+    const driverUpdate: Record<string, unknown> = {};
+    if (gender === "male" || gender === "female") driverUpdate.gender = gender;
+    if (["private", "taxi", "van", "microbus"].includes(carType)) {
+      driverUpdate.carType = carType;
+      // Server-authoritative capacity — never trust client input.
+      driverUpdate.carCapacity = carTypeToCapacity(carType as CarType);
+    }
+    if (vehicleName?.trim()) driverUpdate.vehicleName = vehicleName.trim();
+    if (vehicleColor?.trim()) driverUpdate.vehicleColor = vehicleColor.trim();
+    if (licensePlate?.trim()) driverUpdate.licensePlate = licensePlate.trim();
+    if (licenseExpiry?.trim())
+      driverUpdate.licenseExpiry = licenseExpiry.trim();
+
+    const ALLOWED_DOC_KEYS = [
+      "nationalIdFront",
+      "nationalIdBack",
+      "drivingLicense",
+      "carLicenseFront",
+      "carLicenseBack",
+      "criminalRecord",
+    ];
+    if (documents && typeof documents === "object") {
+      for (const key of ALLOWED_DOC_KEYS) {
+        if (typeof documents[key] === "string" && documents[key]) {
+          driverUpdate[`documents.${key}`] = documents[key];
+        }
+      }
+    }
+
+    const driver = await Driver.findOneAndUpdate(
+      { userId: session.userId },
+      driverUpdate,
+      { new: true },
+    ).lean();
+
+    return NextResponse.json({ ...user, driver });
   } catch {
     return NextResponse.json({ error: "Update failed." }, { status: 500 });
   }

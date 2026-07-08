@@ -17,6 +17,8 @@
 /.next/
 /out/
 plan-laravelBackendHandoffDoc.prompt.md
+plan-driverAuthDashboard.prompt.md
+plan-driverRound2.prompt.md
 
 # production
 /build
