@@ -17,8 +17,13 @@ export default async function ProfilePage() {
 
   if (session.role === "driver") {
     const user = await User.findById(session.userId)
-      .select("name email phone")
-      .lean<{ name: string; email: string; phone?: string }>();
+      .select("name email phone savedAddresses")
+      .lean<{
+        name: string;
+        email: string;
+        phone?: string;
+        savedAddresses?: SavedAddress[];
+      }>();
     if (!user) redirect("/login");
 
     const driver = await Driver.findOne({ userId: session.userId }).lean<{
@@ -50,6 +55,7 @@ export default async function ProfilePage() {
         documents={driver.documents ?? {}}
         verificationStatus={driver.verificationStatus}
         profileSince={driver.createdAt.toISOString()}
+        initialSavedAddresses={user.savedAddresses ?? []}
       />
     );
   }

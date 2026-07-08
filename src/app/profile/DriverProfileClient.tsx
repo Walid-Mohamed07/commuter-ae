@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import Section from "@/components/shared/Section";
+import SavedAddressesSection from "@/components/shared/SavedAddressesSection";
 import { CAR_TYPE_LIST, type CarType } from "@/lib/config/driver";
+import type { SavedAddress } from "@/types/shared";
 
 interface DocKey {
   key:
@@ -47,6 +49,7 @@ interface Props {
   documents: Record<string, string | null>;
   verificationStatus: "incomplete" | "pending" | "verified";
   profileSince: string;
+  initialSavedAddresses: SavedAddress[];
 }
 
 const labelStyle: React.CSSProperties = {
@@ -117,6 +120,7 @@ export default function DriverProfileClient({
   documents: initialDocuments,
   verificationStatus: initialVerificationStatus,
   profileSince,
+  initialSavedAddresses,
 }: Props) {
   // Personal info
   const [name, setName] = useState(initialName);
@@ -721,6 +725,8 @@ export default function DriverProfileClient({
             </button>
           </div>
         )}
+
+        <SavedAddressesSection initialAddresses={initialSavedAddresses} />
       </main>
     </div>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format, addDays, startOfDay } from "date-fns";
 import {
   Plus,
@@ -9,12 +9,15 @@ import {
   Trash2,
   Loader2,
   CalendarClock,
+  Navigation,
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import BottomSheet from "@/components/shared/BottomSheet";
 import EmptyState from "@/components/shared/EmptyState";
 import AddressInput from "@/components/landing/AddressInput";
+import AvailabilityMap from "@/components/availability/AvailabilityMap";
 import type { TripPoint } from "@/lib/store/useTripStore";
+import type { SavedAddress } from "@/types/shared";
 
 interface Point {
   address: string;
@@ -31,9 +34,11 @@ interface AvailabilityRecord {
   endTime: string;
 }
 
-const NEXT_DAYS = Array.from({ length: 7 }, (_, i) =>
-  addDays(startOfDay(new Date()), i),
-);
+const NEXT_DAYS = Array.from({ length: 7 }, (_, i) => {
+  const now = new Date();
+  const startOffset = now.getHours() >= 20 ? 2 : 1;
+  return addDays(startOfDay(now), startOffset + i);
+});
 
 function to12h(hhmm: string): string {
   if (!hhmm) return "—";
@@ -81,6 +86,44 @@ export default function AvailabilityClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [picking, setPicking] = useState<"start" | "end" | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [locating, setLocating] = useState<"start" | "end" | null>(null);
+
+  // Fetch saved addresses on mount
+  useEffect(() => {
+    fetch("/api/auth/addresses", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.savedAddresses) setSavedAddresses(d.savedAddresses);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function locateMe(field: "start" | "end") {
+    if (!navigator.geolocation) return;
+    setLocating(field);
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        const lat = coords.latitude;
+        const lng = coords.longitude;
+        let address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        try {
+          const res = await fetch(`/api/geocode/reverse?lat=${lat}&lng=${lng}`);
+          if (res.ok) {
+            const d = await res.json();
+            if (d.address) address = d.address;
+          }
+        } catch {}
+        const point: TripPoint = { address, lat, lng };
+        if (field === "start") setStartLocation(point);
+        else setEndLocation(point);
+        setLocating(null);
+      },
+      () => setLocating(null),
+      { timeout: 8000 },
+    );
+  }
 
   function toggleDate(d: string) {
     setSelectedDates((prev) =>
@@ -95,6 +138,7 @@ export default function AvailabilityClient({
     setStartTime("");
     setEndTime("");
     setError("");
+    setPicking(null);
   }
 
   async function handleSubmit() {
@@ -161,9 +205,17 @@ export default function AvailabilityClient({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader authed email={email} role="driver" variant="app" backHref="/" />
+      <AppHeader
+        authed
+        email={email}
+        role="driver"
+        variant="app"
+        backHref="/"
+      />
 
-      <main style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}>
+      <main
+        style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
+      >
         <div
           style={{
             display: "flex",
@@ -174,7 +226,15 @@ export default function AvailabilityClient({
           }}
         >
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0B1E3D", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: "#0B1E3D",
+                margin: "0 0 4px",
+                letterSpacing: "-0.02em",
+              }}
+            >
               Availability
             </h1>
             <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
@@ -279,14 +339,40 @@ export default function AvailabilityClient({
                   <CalendarClock size={20} color="#00806E" aria-hidden="true" />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: "#0B1E3D" }}>
+                  <p
+                    style={{
+                      margin: "0 0 2px",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#0B1E3D",
+                    }}
+                  >
                     {format(new Date(`${r.date}T12:00:00`), "EEE, MMM d, yyyy")}
                   </p>
-                  <p style={{ margin: "0 0 2px", fontSize: 13, color: "#5A6A7A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <p
+                    style={{
+                      margin: "0 0 2px",
+                      fontSize: 13,
+                      color: "#5A6A7A",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     {r.startLocation.address} → {r.endLocation.address}
                   </p>
-                  <p style={{ margin: 0, fontSize: 12, color: "#5A6A7A", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Clock size={12} aria-hidden="true" /> {to12h(r.startTime)} – {to12h(r.endTime)}
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#5A6A7A",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Clock size={12} aria-hidden="true" /> {to12h(r.startTime)}{" "}
+                    – {to12h(r.endTime)}
                   </p>
                 </div>
                 <button
@@ -328,10 +414,41 @@ export default function AvailabilityClient({
         }}
         title="Add availability"
       >
-        <div style={{ padding: "8px 20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <div
+          style={{
+            padding: "8px 20px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
+          {/* ── Map ── */}
+          <div
+            style={{
+              height: 220,
+              borderRadius: 12,
+              overflow: "hidden",
+              border: "1.5px solid #e8edf0",
+            }}
+          >
+            <AvailabilityMap
+              startLocation={startLocation}
+              endLocation={endLocation}
+              picking={picking}
+              onPick={(field, point) => {
+                if (field === "start") setStartLocation(point);
+                else setEndLocation(point);
+                setPicking(null);
+              }}
+              onCancelPick={() => setPicking(null)}
+            />
+          </div>
           <div>
             <label style={labelStyle}>
-              Available days <span aria-hidden="true" style={{ color: "#e74c3c" }}>*</span>
+              Available days{" "}
+              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                *
+              </span>
             </label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {NEXT_DAYS.map((d) => {
@@ -365,32 +482,143 @@ export default function AvailabilityClient({
 
           <div>
             <label style={labelStyle}>
-              Start location <span aria-hidden="true" style={{ color: "#e74c3c" }}>*</span>
+              Start location{" "}
+              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                *
+              </span>
             </label>
             <AddressInput
               placeholder="Where do you start?"
               value={startLocation}
               onChange={setStartLocation}
               icon={<MapPin size={17} aria-hidden="true" />}
+              savedAddresses={savedAddresses}
             />
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => locateMe("start")}
+                disabled={locating === "start"}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "none",
+                  border: "none",
+                  cursor: locating === "start" ? "not-allowed" : "pointer",
+                  color: "#00C2A8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "0 2px",
+                  fontFamily: "inherit",
+                }}
+              >
+                {locating === "start" ? (
+                  <Loader2 size={12} className="spin" aria-hidden="true" />
+                ) : (
+                  <Navigation size={12} aria-hidden="true" />
+                )}
+                Use my current location
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicking(picking === "start" ? null : "start")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background:
+                    picking === "start" ? "rgba(0,194,168,0.1)" : "none",
+                  border: picking === "start" ? "1px solid #00C2A8" : "none",
+                  cursor: "pointer",
+                  color: picking === "start" ? "#00C2A8" : "#5A6A7A",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  fontFamily: "inherit",
+                }}
+              >
+                <MapPin size={12} aria-hidden="true" />
+                {picking === "start" ? "Picking…" : "Pin on map"}
+              </button>
+            </div>
           </div>
 
           <div>
             <label style={labelStyle}>
-              End location <span aria-hidden="true" style={{ color: "#e74c3c" }}>*</span>
+              End location{" "}
+              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                *
+              </span>
             </label>
             <AddressInput
               placeholder="Where do you end?"
               value={endLocation}
               onChange={setEndLocation}
               icon={<Flag size={17} aria-hidden="true" />}
+              savedAddresses={savedAddresses}
             />
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => locateMe("end")}
+                disabled={locating === "end"}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "none",
+                  border: "none",
+                  cursor: locating === "end" ? "not-allowed" : "pointer",
+                  color: "#00C2A8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "0 2px",
+                  fontFamily: "inherit",
+                }}
+              >
+                {locating === "end" ? (
+                  <Loader2 size={12} className="spin" aria-hidden="true" />
+                ) : (
+                  <Navigation size={12} aria-hidden="true" />
+                )}
+                Use my current location
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicking(picking === "end" ? null : "end")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background:
+                    picking === "end" ? "rgba(0,194,168,0.1)" : "none",
+                  border: picking === "end" ? "1px solid #00C2A8" : "none",
+                  cursor: "pointer",
+                  color: picking === "end" ? "#00C2A8" : "#5A6A7A",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  fontFamily: "inherit",
+                }}
+              >
+                <Flag size={12} aria-hidden="true" />
+                {picking === "end" ? "Picking…" : "Pin on map"}
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          >
             <div>
               <label htmlFor="a-start-time" style={labelStyle}>
-                Start time <span aria-hidden="true" style={{ color: "#e74c3c" }}>*</span>
+                Start time{" "}
+                <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                  *
+                </span>
               </label>
               <input
                 id="a-start-time"
@@ -402,7 +630,10 @@ export default function AvailabilityClient({
             </div>
             <div>
               <label htmlFor="a-end-time" style={labelStyle}>
-                End time <span aria-hidden="true" style={{ color: "#e74c3c" }}>*</span>
+                End time{" "}
+                <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                  *
+                </span>
               </label>
               <input
                 id="a-end-time"
@@ -415,7 +646,11 @@ export default function AvailabilityClient({
           </div>
 
           {error && (
-            <p role="alert" aria-live="assertive" style={{ fontSize: 13, color: "#e74c3c", margin: 0 }}>
+            <p
+              role="alert"
+              aria-live="assertive"
+              style={{ fontSize: 13, color: "#e74c3c", margin: 0 }}
+            >
               {error}
             </p>
           )}
@@ -440,7 +675,9 @@ export default function AvailabilityClient({
               fontFamily: "inherit",
             }}
           >
-            {saving && <Loader2 size={18} className="spin" aria-hidden="true" />}
+            {saving && (
+              <Loader2 size={18} className="spin" aria-hidden="true" />
+            )}
             {saving ? "Saving…" : "Save availability"}
           </button>
         </div>
