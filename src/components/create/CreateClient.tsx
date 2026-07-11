@@ -505,7 +505,6 @@ export default function CreateClient({ userEmail }: Props) {
               style={{
                 position: "sticky",
                 bottom: 0,
-                background: "#ffffff",
                 paddingTop: 12,
                 paddingBottom: 8,
                 marginTop: -4,
@@ -1344,10 +1343,10 @@ export default function CreateClient({ userEmail }: Props) {
             border: none !important; 
             border-radius: 0 !important; 
             border-bottom: 1px solid #eef0f3 !important; 
-            overflow-y: visible !important; 
+            // overflow-y: visible !important; 
             flex-shrink: 0 !important;
           }
-          .create-right { flex: 1 1 100% !important; margin: 20px !important; border-radius: 20px !important; height: 320px !important; flex-shrink: 0 !important; }
+          .create-right { flex: 1 1 100% !important; height: 45vh !important; flex-shrink: 0 !important; }
           .email-desktop { display: none !important; }
         }
         @keyframes spin { to { transform: rotate(360deg); } }
