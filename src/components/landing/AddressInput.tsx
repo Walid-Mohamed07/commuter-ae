@@ -260,7 +260,7 @@ export default function AddressInput({
             padding: "4px 0",
             maxHeight: 260,
             overflowY: "auto",
-            zIndex: 300,
+            zIndex: 9999999,
           }}
         >
           {/* Saved addresses section */}

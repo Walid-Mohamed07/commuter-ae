@@ -16,8 +16,8 @@ import type { TripPoint } from "@/lib/store/useTripStore";
 import AppHeader from "@/components/layout/AppHeader";
 import DatePicker from "./DatePicker";
 import TripCycle, { type TripData } from "./TripCycle";
-import { format, addDays, startOfDay } from "date-fns";
 import CreateMap from "./CreateMap";
+import { earliestBookingDate } from "@/lib/time/bookingDates";
 import type { SavedAddress } from "@/types/shared";
 import type { Station } from "@/lib/geo/stations";
 
@@ -50,13 +50,19 @@ function defaultTrip(
     dropoffStation: null,
     walkingMinToStation: null,
     walkingMinFromStation: null,
+    passengers: [],
+    baseDistanceKm: null,
+    passengerDetourKm: null,
   };
 }
 
 export default function CreateClient({ userEmail }: Props) {
   const { pickup, dropoff } = useTripStore();
   const [mounted, setMounted] = useState(false);
-  const date = format(addDays(startOfDay(new Date()), 1), "yyyy-MM-dd");
+  const [startDate, setStartDate] = useState<string>(earliestBookingDate());
+  const [selectedDates, setSelectedDates] = useState<string[]>([
+    earliestBookingDate(),
+  ]);
   const [trips, setTrips] = useState<TripData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -67,6 +73,10 @@ export default function CreateClient({ userEmail }: Props) {
   const [stations, setStations] = useState<Station[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(false);
+  const [vehiclesMap, setVehiclesMap] = useState<Record<
+    string,
+    (typeof VEHICLES)[keyof typeof VEHICLES]
+  > | null>(null);
   const [picking, setPicking] = useState<{
     tripId: string;
     field: "pickup" | "dropoff";
@@ -124,6 +134,20 @@ export default function CreateClient({ userEmail }: Props) {
     })();
   }, []);
 
+  // Vehicles — DB-hydrated (mobile-parity source of truth); falls back to static config on failure
+  useEffect(() => {
+    fetch("/api/vehicles", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.vehicles?.length) return;
+        const map: Record<string, (typeof VEHICLES)[keyof typeof VEHICLES]> =
+          {};
+        for (const v of d.vehicles) map[v.key] = v;
+        setVehiclesMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleMapPick = useCallback(
     (point: TripPoint) => {
       if (!picking) return;
@@ -146,7 +170,8 @@ export default function CreateClient({ userEmail }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          date,
+          dates: selectedDates,
+          startDate,
           trips: trips.map((t) => ({
             pickup: t.pickup,
             dropoff: t.dropoff,
@@ -155,6 +180,7 @@ export default function CreateClient({ userEmail }: Props) {
             distanceKm: t.distanceKm,
             durationMinutes: t.durationMinutes,
             extraPassengers: t.extraPassengers,
+            passengers: t.passengers,
             ...(t.pickupStation
               ? {
                   pickupStation: t.pickupStation,
@@ -179,7 +205,7 @@ export default function CreateClient({ userEmail }: Props) {
         const walletRes = await fetch("/api/payments/wallet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: data.bookingId }),
+          body: JSON.stringify({ groupId: data.groupId }),
         });
         const walletData = await walletRes.json();
         if (!walletRes.ok) {
@@ -189,7 +215,7 @@ export default function CreateClient({ userEmail }: Props) {
           return;
         }
         navigating = true;
-        window.location.href = `/checkout/callback?bookingId=${data.bookingId}`;
+        window.location.href = `/checkout/callback?groupId=${data.groupId}`;
         return;
       }
 
@@ -197,7 +223,7 @@ export default function CreateClient({ userEmail }: Props) {
       const payRes = await fetch("/api/payments/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: data.bookingId }),
+        body: JSON.stringify({ groupId: data.groupId }),
       });
       const payData = await payRes.json();
       if (!payRes.ok) {
@@ -255,6 +281,9 @@ export default function CreateClient({ userEmail }: Props) {
                 dropoffStation: null,
                 walkingMinToStation: null,
                 walkingMinFromStation: null,
+                passengers: [],
+                baseDistanceKm: null,
+                passengerDetourKm: null,
               };
             }
             return t;
@@ -277,6 +306,7 @@ export default function CreateClient({ userEmail }: Props) {
 
   // Validate all trips before preview
   function validate(): string | null {
+    if (selectedDates.length === 0) return "Select at least one date.";
     for (let i = 0; i < trips.length; i++) {
       const t = trips[i];
       if (!t.pickup) return `Trip ${i + 1}: pickup location required.`;
@@ -284,6 +314,12 @@ export default function CreateClient({ userEmail }: Props) {
       if (!t.arrivalTime) return `Trip ${i + 1}: arrival time required.`;
       if (!t.pickupTime)
         return `Trip ${i + 1}: pickup time not yet computed — wait a moment.`;
+      if (
+        t.passengerDetourKm != null &&
+        t.baseDistanceKm != null &&
+        t.passengerDetourKm > t.baseDistanceKm * 1.25
+      )
+        return `Trip ${i + 1}: passenger detour exceeds 25% of the base route — adjust points.`;
       // Time ordering: each trip must arrive after the previous trip
       if (i > 0) {
         const prev = trips[i - 1];
@@ -316,6 +352,7 @@ export default function CreateClient({ userEmail }: Props) {
       sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0, t.vehicleType),
     0,
   );
+  const grandTotalEgp = totalEgp * Math.max(1, selectedDates.length);
 
   if (!mounted) {
     return (
@@ -393,7 +430,12 @@ export default function CreateClient({ userEmail }: Props) {
               </p>
             </div>
 
-            <DatePicker value={date} />
+            <DatePicker
+              startDate={startDate}
+              onStartDateChange={setStartDate}
+              value={selectedDates}
+              onChange={setSelectedDates}
+            />
 
             {/* Trip cycles */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -440,6 +482,10 @@ export default function CreateClient({ userEmail }: Props) {
                     }
                     stations={stations}
                     minArrivalTime={minArrivalTime}
+                    vehiclesMap={vehiclesMap ?? undefined}
+                    vehicleList={
+                      vehiclesMap ? Object.values(vehiclesMap) : undefined
+                    }
                   />
                 );
               })}
@@ -521,7 +567,11 @@ export default function CreateClient({ userEmail }: Props) {
                   }}
                 >
                   Estimated total:{" "}
-                  <strong style={{ color: "#0B1E3D" }}>{totalEgp} EGP</strong>
+                  <strong style={{ color: "#0B1E3D" }}>
+                    {grandTotalEgp} EGP
+                  </strong>
+                  {selectedDates.length > 1 &&
+                    ` × ${selectedDates.length} days`}
                 </p>
               )}
               <button
@@ -651,7 +701,12 @@ export default function CreateClient({ userEmail }: Props) {
 
             <div style={{ padding: "8px 24px 0" }}>
               <p style={{ fontSize: 13, color: "#5A6A7A", margin: "0 0 16px" }}>
-                Date: <strong style={{ color: "#0B1E3D" }}>{date}</strong>
+                Date{selectedDates.length > 1 ? "s" : ""}:{" "}
+                <strong style={{ color: "#0B1E3D" }}>
+                  {selectedDates.join(", ")}
+                </strong>
+                {selectedDates.length > 1 &&
+                  ` (× ${selectedDates.length} days)`}
               </p>
 
               {trips.map((t, i) => (
@@ -951,6 +1006,8 @@ export default function CreateClient({ userEmail }: Props) {
                     style={{ fontWeight: 700, fontSize: 15, color: "#0B1E3D" }}
                   >
                     Total
+                    {selectedDates.length > 1 &&
+                      ` (× ${selectedDates.length} days)`}
                   </span>
                   <span
                     style={{
@@ -960,7 +1017,7 @@ export default function CreateClient({ userEmail }: Props) {
                       fontVariantNumeric: "tabular-nums",
                     }}
                   >
-                    {totalEgp} EGP
+                    {grandTotalEgp} EGP
                   </span>
                 </div>
               )}
@@ -1135,6 +1192,8 @@ export default function CreateClient({ userEmail }: Props) {
                   style={{ fontSize: 14, fontWeight: 600, color: "#5A6A7A" }}
                 >
                   Total amount
+                  {selectedDates.length > 1 &&
+                    ` (× ${selectedDates.length} days)`}
                 </span>
                 <span
                   style={{
@@ -1144,14 +1203,14 @@ export default function CreateClient({ userEmail }: Props) {
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {totalEgp} EGP
+                  {grandTotalEgp} EGP
                 </span>
               </div>
 
               {/* Payment method */}
               {(() => {
                 const walletEnough =
-                  walletBalance !== null && walletBalance >= totalEgp;
+                  walletBalance !== null && walletBalance >= grandTotalEgp;
                 return (
                   <div>
                     <span
@@ -1247,7 +1306,7 @@ export default function CreateClient({ userEmail }: Props) {
                           margin: "8px 0 0",
                         }}
                       >
-                        Not enough balance to pay {totalEgp} EGP.{" "}
+                        Not enough balance to pay {grandTotalEgp} EGP.{" "}
                         <Link
                           href="/wallet"
                           style={{ color: "#00C2A8", fontWeight: 600 }}

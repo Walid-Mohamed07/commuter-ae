@@ -1,15 +1,32 @@
 "use client";
-import { Calendar } from "lucide-react";
-import { format, addDays, startOfDay } from "date-fns";
+import { Calendar, Check } from "lucide-react";
+import { format } from "date-fns";
+import { bookingWindow, earliestBookingDate } from "@/lib/time/bookingDates";
 
 interface Props {
-  value: string; // "YYYY-MM-DD" (tomorrow)
+  startDate: string; // "YYYY-MM-DD" — anchor day chosen by the user
+  onStartDateChange: (date: string) => void;
+  value: string[]; // selected "YYYY-MM-DD" dates (subset of the 7-day window from startDate)
+  onChange: (dates: string[]) => void;
 }
 
-export default function DatePicker({ value }: Props) {
-  const d = value
-    ? new Date(`${value}T00:00:00`)
-    : addDays(startOfDay(new Date()), 1);
+export default function DatePicker({
+  startDate,
+  onStartDateChange,
+  value,
+  onChange,
+}: Props) {
+  const earliest = earliestBookingDate();
+  const days = bookingWindow(startDate);
+
+  function toggle(day: string) {
+    if (value.includes(day)) {
+      onChange(value.filter((d) => d !== day));
+    } else {
+      onChange([...value, day].sort());
+    }
+  }
+
   return (
     <div>
       <p
@@ -20,34 +37,102 @@ export default function DatePicker({ value }: Props) {
           margin: "0 0 10px",
         }}
       >
-        Trip date
+        Start date
       </p>
-      <div
-        role="status"
+      <input
+        type="date"
+        value={startDate}
+        min={earliest}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (!next) return;
+          onStartDateChange(next);
+          onChange([next]);
+        }}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "13px 14px",
-          background: "#eff7f6",
-          borderRadius: 12,
+          width: "100%",
+          height: 44,
+          padding: "0 12px",
+          borderRadius: 10,
           border: "1.5px solid #c8e8e4",
+          background: "#eff7f6",
+          fontSize: 14,
+          fontFamily: "inherit",
+          color: "#0B1E3D",
+          marginBottom: 14,
+        }}
+      />
+
+      <p
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "#0B1E3D",
+          margin: "0 0 10px",
         }}
       >
-        <Calendar
-          size={18}
-          style={{ color: "#00C2A8", flexShrink: 0 }}
-          aria-hidden="true"
-        />
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D" }}>
-            {format(d, "EEEE, MMM d, yyyy")}
-          </div>
-          <div style={{ fontSize: 12, color: "#5A6A7A", marginTop: 1 }}>
-            Tomorrow — all trips are scheduled for the next day
-          </div>
-        </div>
+        Request date(s)
+      </p>
+      <div
+        role="group"
+        aria-label="Select one or more booking dates"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))",
+          gap: 8,
+        }}
+      >
+        {days.map((day) => {
+          const d = new Date(`${day}T00:00:00`);
+          const selected = value.includes(day);
+          return (
+            <button
+              key={day}
+              type="button"
+              onClick={() => toggle(day)}
+              aria-pressed={selected}
+              style={{
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                padding: "10px 6px",
+                borderRadius: 12,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                border: `1.5px solid ${selected ? "#00C2A8" : "#c8e8e4"}`,
+                background: selected ? "#00C2A8" : "#eff7f6",
+                color: selected ? "#ffffff" : "#0B1E3D",
+                transition: "background 0.15s, border-color 0.15s",
+              }}
+            >
+              {selected && (
+                <Check
+                  size={12}
+                  style={{ position: "absolute", top: 6, right: 6 }}
+                  aria-hidden="true"
+                />
+              )}
+              <Calendar
+                size={16}
+                style={{ color: selected ? "#ffffff" : "#00C2A8" }}
+                aria-hidden="true"
+              />
+              <span style={{ fontSize: 11, fontWeight: 600 }}>
+                {format(d, "EEE")}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 800 }}>
+                {format(d, "MMM d")}
+              </span>
+            </button>
+          );
+        })}
       </div>
+      <p style={{ fontSize: 12, color: "#5A6A7A", margin: "8px 0 0" }}>
+        Pick one or more days — trips repeat on each selected date.
+      </p>
     </div>
   );
 }

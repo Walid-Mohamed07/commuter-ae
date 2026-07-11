@@ -86,6 +86,52 @@ export async function verifyAndSettleBooking(
 }
 
 /**
+ * Same as verifyAndSettleBooking but for a group of bookings created together
+ * (multi-date booking) sharing a groupId. Settles ALL bookings in the group.
+ */
+export async function verifyAndSettleGroup(
+  groupId: string,
+  userId?: string,
+): Promise<Settled> {
+  await connectDB();
+
+  const query: Record<string, unknown> = { groupId };
+  if (userId) query.userId = new Types.ObjectId(userId);
+
+  const bookings = await Booking.find(query);
+  if (!bookings.length) return "pending";
+
+  const anyPaid = bookings.some((b) => b.paymentStatus === "paid");
+  const anyPending = bookings.some(
+    (b) => b.paymentStatus !== "paid" && b.paymentStatus !== "failed",
+  );
+
+  if (anyPaid && !anyPending) return "paid";
+  if (!anyPending && !anyPaid) return "failed";
+
+  const sessionId = bookings.find((b) => b.kashierSessionId)?.kashierSessionId;
+  if (!sessionId) return "pending";
+
+  const outcome = await queryKashierStatus(sessionId);
+
+  if (outcome === "paid") {
+    await Booking.updateMany(
+      { groupId, paymentStatus: { $in: ["pending", "failed"] } },
+      { paymentStatus: "paid", status: "submitted", paidAt: new Date() },
+    );
+    return "paid";
+  }
+  if (outcome === "failed") {
+    await Booking.updateMany(
+      { groupId, paymentStatus: "pending" },
+      { paymentStatus: "failed" },
+    );
+    return "failed";
+  }
+  return "pending";
+}
+
+/**
  * Settle a pending wallet top-up against Kashier and credit the wallet on
  * success. Idempotent: the conditional status filter ensures the credit runs
  * at most once even if webhook + redirect both fire.

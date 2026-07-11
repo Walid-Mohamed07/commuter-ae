@@ -1,0 +1,111 @@
+{
+    "type": "FeatureCollection",
+    "crs": {
+        "type": "name",
+        "properties": {
+            "name": "EPSG:3857"
+        }
+    },
+    "features": [
+        {
+            "type": "Feature",
+            "id": 1,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    31.317400000989437,
+                    30.117300000041723
+                ]
+            },
+            "properties": {
+                "OBJECTID": 1,
+                "X": 31.317385509173299,
+                "Y": 30.1172941901002,
+                "name": "الفرجاني ش عين شمس",
+                "direction": "محطة الفرجاني ش عين شمس",
+                "landmark": "",
+                "station_type": ""
+            }
+        },
+        {
+            "type": "Feature",
+            "id": 2,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    31.339699998497963,
+                    30.118700001388788
+                ]
+            },
+            "properties": {
+                "OBJECTID": 2,
+                "X": 31.339721066977699,
+                "Y": 30.118695675260302,
+                "name": "",
+                "direction": "محطة ميدان الالف مسكن (أ)",
+                "landmark": "امام محطة المترو",
+                "station_type": "Type C"
+            }
+        },
+        {
+            "type": "Feature",
+            "id": 3,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    31.339099999517202,
+                    30.118700001388788
+                ]
+            },
+            "properties": {
+                "OBJECTID": 3,
+                "X": 31.3391350830031,
+                "Y": 30.118705822499599,
+                "name": "ميدان الالف مسكن (ب)",
+                "direction": "ميدان الالف مسكن (ب)",
+                "landmark": "امام كشري الغباشي",
+                "station_type": "Type C"
+            }
+        },
+        {
+            "type": "Feature",
+            "id": 4,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    31.324499998241663,
+                    30.1064000017941
+                ]
+            },
+            "properties": {
+                "OBJECTID": 4,
+                "X": 31.324490967575802,
+                "Y": 30.106447172303302,
+                "name": "التجنيد (أ)",
+                "direction": "التجنيد (أ)",
+                "landmark": " امام كشري هند",
+                "station_type": "Type C"
+            }
+        },
+        {
+            "type": "Feature",
+            "id": 5,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    31.323699999600649,
+                    30.106300000101328
+                ]
+            },
+            "properties": {
+                "OBJECTID": 5,
+                "X": 31.323690564501,
+                "Y": 30.1063087765068,
+                "name": "التجنيد (ب)",
+                "direction": "محطة التجنيد (ب)",
+                "landmark": "امام محل العصير",
+                "station_type": "Type C"
+            }
+        }
+    ]
+}

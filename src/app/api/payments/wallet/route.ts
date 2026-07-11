@@ -16,35 +16,40 @@ export async function POST(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let bookingId: string;
+  let groupId: string | undefined;
+  let bookingId: string | undefined;
   try {
-    ({ bookingId } = await req.json());
+    ({ groupId, bookingId } = await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  if (!bookingId || !Types.ObjectId.isValid(bookingId))
-    return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 });
+  if (!groupId && (!bookingId || !Types.ObjectId.isValid(bookingId)))
+    return NextResponse.json({ error: "Invalid groupId or bookingId" }, { status: 400 });
 
   await connectDB();
 
-  const booking = await Booking.findOne({
-    _id: bookingId,
-    userId: new Types.ObjectId(session.userId),
+  const query = groupId
+    ? { groupId, userId: new Types.ObjectId(session.userId) }
+    : { _id: bookingId, userId: new Types.ObjectId(session.userId) };
+
+  const bookings = await Booking.find({
+    ...query,
     paymentStatus: { $in: ["pending", "failed"] },
   });
 
-  if (!booking)
+  if (!bookings.length)
     return NextResponse.json(
       { error: "Booking not found or already paid." },
       { status: 404 },
     );
 
-  const amount = booking.amountEgp;
+  const amount = bookings.reduce((sum, b) => sum + b.amountEgp, 0);
+  const refLabel = groupId ?? String(bookings[0]._id);
 
   const newBalance = await debitWallet(session.userId, amount, {
-    description: `Payment for booking on ${booking.date}`,
-    bookingId: String(booking._id),
+    description: `Payment for booking(s) ${refLabel}`,
+    bookingId: refLabel,
   });
 
   if (newBalance === null) {
@@ -54,20 +59,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Settle the booking — conditional so a racing card webhook can't double-pay.
-  const settled = await Booking.findOneAndUpdate(
-    { _id: booking._id, paymentStatus: { $in: ["pending", "failed"] } },
-    {
-      paymentStatus: "paid",
-      status: "submitted",
-      paidAt: new Date(),
-    },
-  );
+  // Settle all bookings — conditional so a racing card webhook can't double-pay.
+  const settleFilter = groupId
+    ? { groupId, paymentStatus: { $in: ["pending", "failed"] } }
+    : { _id: bookings[0]._id, paymentStatus: { $in: ["pending", "failed"] } };
 
-  // Lost the race (booking already paid elsewhere) — refund the debit.
-  if (!settled) {
+  const settled = await Booking.updateMany(settleFilter, {
+    paymentStatus: "paid",
+    status: "submitted",
+    paidAt: new Date(),
+  });
+
+  // Lost the race (bookings already paid elsewhere) — refund the debit.
+  if (!settled.modifiedCount) {
     await creditWallet(session.userId, amount, {
-      description: `Refund — booking on ${booking.date} already paid`,
+      description: `Refund — booking(s) ${refLabel} already paid`,
       type: "refund",
     });
     return NextResponse.json(

@@ -5,10 +5,11 @@ import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Booking } from "@/models/Booking";
 import { Types } from "mongoose";
-import { verifyAndSettleBooking } from "@/lib/payments/kashier";
+import { verifyAndSettleBooking, verifyAndSettleGroup } from "@/lib/payments/kashier";
 
 interface SearchParams {
   bookingId?: string;
+  groupId?: string;
   status?: string; // Kashier adds: SUCCESS | FAILURE
 }
 
@@ -25,37 +26,46 @@ export default async function CallbackPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { bookingId, status: kashierStatus } = await searchParams;
+  const {
+    bookingId,
+    groupId,
+    status: kashierStatus,
+  } = await searchParams;
 
-  if (!bookingId || !Types.ObjectId.isValid(bookingId)) {
+  if (!groupId && (!bookingId || !Types.ObjectId.isValid(bookingId))) {
     redirect("/my-requests");
   }
 
-  // Active verification — query Kashier directly and settle the booking.
+  // Active verification — query Kashier directly and settle the booking(s).
   // Don't rely on the webhook alone (may be delayed or fail to deliver).
-  await verifyAndSettleBooking(bookingId, session.userId);
+  if (groupId) {
+    await verifyAndSettleGroup(groupId, session.userId);
+  } else {
+    await verifyAndSettleBooking(bookingId!, session.userId);
+  }
 
   await connectDB();
-  const booking = await Booking.findOne({
-    _id: bookingId,
-    userId: new Types.ObjectId(session.userId),
-  })
+  const bookings = await Booking.find(
+    groupId
+      ? { groupId, userId: new Types.ObjectId(session.userId) }
+      : { _id: bookingId, userId: new Types.ObjectId(session.userId) },
+  )
     .select("paymentStatus amountEgp status date")
-    .lean<{
-      paymentStatus: string;
-      amountEgp: number;
-      status: string;
-      date: string;
-    }>();
+    .lean<
+      { paymentStatus: string; amountEgp: number; status: string; date: string }[]
+    >();
 
-  if (!booking) redirect("/my-requests");
+  if (!bookings.length) redirect("/my-requests");
 
-  const isPaid = booking.paymentStatus === "paid";
+  const totalAmountEgp = bookings.reduce((sum, b) => sum + b.amountEgp, 0);
+  const dates = bookings.map((b) => b.date).sort();
+  const isPaid = bookings.every((b) => b.paymentStatus === "paid");
   const isFailed =
-    booking.paymentStatus === "failed" ||
+    bookings.some((b) => b.paymentStatus === "failed") ||
     kashierStatus === "FAILURE" ||
     kashierStatus === "failure";
   const isProcessing = !isPaid && !isFailed;
+  const booking = { amountEgp: totalAmountEgp, date: dates.join(", ") };
 
   return (
     <div

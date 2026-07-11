@@ -28,14 +28,19 @@ export async function GET(req: NextRequest) {
   const leg = data.routes?.[0]?.legs?.[0];
   if (!leg) return NextResponse.json([]);
 
+  const legs: { distance: { value: number }; duration: { value: number } }[] =
+    data.routes[0].legs;
+  const totalDistanceM = legs.reduce((sum, l) => sum + l.distance.value, 0);
+  const totalDurationS = legs.reduce((sum, l) => sum + l.duration.value, 0);
+
   const encoded: string = data.routes[0].overview_polyline.points;
   const coords = decodePolyline(encoded);
 
   return NextResponse.json([
     {
       coordinates: coords,
-      distance_km: Math.round((leg.distance.value / 1000) * 10) / 10,
-      duration_minutes: Math.round(leg.duration.value / 60),
+      distance_km: Math.round((totalDistanceM / 1000) * 10) / 10,
+      duration_minutes: Math.round(totalDurationS / 60),
     },
   ]);
 }
