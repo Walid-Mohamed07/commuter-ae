@@ -13,7 +13,13 @@ export default async function WalletPage() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader authed email={session.email} variant="app" backHref="/" />
+      <AppHeader
+        authed
+        email={session.email}
+        role={session.role}
+        variant="app"
+        backHref="/"
+      />
 
       <Suspense fallback={null}>
         <WalletClient />
