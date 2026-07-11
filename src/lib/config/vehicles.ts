@@ -13,6 +13,9 @@ export interface VehicleConfig {
   ride: RideType;
   buffer: number; // minutes subtracted before the pickup window
   window: number; // width of the pickup window in minutes
+  capacity: number; // max seats (integer, placeholder until user edits)
+  occupancy: number; // current occupancy (integer, placeholder)
+  min_occupancy: number; // minimum occupancy required (integer, placeholder)
 }
 
 export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
@@ -23,6 +26,9 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     ride: "private",
     buffer: 20,
     window: 10,
+    capacity: 4,
+    occupancy: 0,
+    min_occupancy: 1,
   },
   taxi_private: {
     key: "taxi_private",
@@ -31,6 +37,9 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     ride: "private",
     buffer: 20,
     window: 10,
+    capacity: 4,
+    occupancy: 0,
+    min_occupancy: 1,
   },
   taxi_shared: {
     key: "taxi_shared",
@@ -39,6 +48,9 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     ride: "shared",
     buffer: 30,
     window: 20,
+    capacity: 4,
+    occupancy: 0,
+    min_occupancy: 2,
   },
   van_shared: {
     key: "van_shared",
@@ -47,6 +59,9 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     ride: "shared",
     buffer: 45,
     window: 25,
+    capacity: 7,
+    occupancy: 0,
+    min_occupancy: 3,
   },
   microbus_shared: {
     key: "microbus_shared",
@@ -55,13 +70,20 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     ride: "shared",
     buffer: 45,
     window: 30,
+    capacity: 14,
+    occupancy: 0,
+    min_occupancy: 5,
   },
 };
 
 export const VEHICLE_LIST = Object.values(VEHICLES);
 
-export function priceFor(distanceKm: number, key: VehicleKey): number {
-  return Math.round(distanceKm * VEHICLES[key].rate);
+export function priceFor(
+  distanceKm: number,
+  key: VehicleKey,
+  vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
+): number {
+  return Math.round(distanceKm * vehiclesMap[key].rate);
 }
 
 /** Max extra passengers allowed per vehicle type */

@@ -17,7 +17,7 @@ const UserSchema = new Schema(
       type: String,
       required: true,
       default: "passenger",
-      enum: ["passenger", "driver"],
+      enum: ["passenger", "driver", "admin"],
     },
     phone: {
       type: String,
