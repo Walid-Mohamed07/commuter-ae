@@ -357,7 +357,7 @@ function LoginForm() {
                   </span>
                 </label>
                 <div
-                  style={fieldStyle}
+                  style={{ ...fieldStyle, padding: 0, overflow: "hidden" }}
                   onFocusCapture={(e) =>
                     focusField(e.currentTarget as HTMLDivElement)
                   }
@@ -365,20 +365,43 @@ function LoginForm() {
                     blurField(e.currentTarget as HTMLDivElement)
                   }
                 >
-                  <Phone
-                    size={17}
-                    style={{ color: "#5A6A7A", flexShrink: 0 }}
-                    aria-hidden="true"
-                  />
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      height: "100%",
+                      padding: "0 12px",
+                      background: "#eef1f3",
+                      borderRight: "1.5px solid #e8edf0",
+                      fontWeight: 600,
+                      color: "#0B1E3D",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Phone
+                      size={17}
+                      style={{ color: "#5A6A7A" }}
+                      aria-hidden="true"
+                    />
+                    +20
+                  </span>
                   <input
                     id="phone"
                     type="tel"
+                    inputMode="numeric"
                     autoComplete="tel"
-                    placeholder="+20 10 0000 0000"
+                    placeholder="1XXXXXXXXX"
                     required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    style={inputStyle}
+                    maxLength={10}
+                    value={phone.replace(/^\+?20/, "")}
+                    onChange={(e) => {
+                      const digits = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 10);
+                      setPhone(digits ? `+20${digits}` : "");
+                    }}
+                    style={{ ...inputStyle, padding: "0 14px" }}
                   />
                 </div>
               </div>

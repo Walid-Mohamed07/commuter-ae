@@ -126,15 +126,58 @@ export default function DriverRegisterForm({
               *
             </span>
           </label>
-          <input
-            id="d-phone"
-            type="tel"
-            autoComplete="tel"
-            required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            style={inputStyle}
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              height: 52,
+              background: "#f8f9fa",
+              border: "1.5px solid #e8edf0",
+              borderRadius: 12,
+              overflow: "hidden",
+            }}
+          >
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "0 12px",
+                fontWeight: 600,
+                color: "#0B1E3D",
+                background: "#eef1f3",
+                borderRight: "1.5px solid #e8edf0",
+              }}
+            >
+              +20
+            </span>
+            <input
+              id="d-phone"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder="1XXXXXXXXX"
+              required
+              maxLength={10}
+              value={phone.replace(/^\+?20/, "")}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                setPhone(digits ? `+20${digits}` : "");
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: "100%",
+                padding: "0 14px",
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: 15,
+                fontFamily: "inherit",
+                color: "#0B1E3D",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
         </div>
         <PasswordInput
           label="Password *"

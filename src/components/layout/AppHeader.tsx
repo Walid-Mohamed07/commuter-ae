@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   FileText,
   History,
+  Activity,
   Wallet,
   User,
   LogOut,
@@ -18,6 +19,7 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { useTripStore } from "@/lib/store/useTripStore";
+import LogoutConfirmModal from "@/components/shared/LogoutConfirmModal";
 
 type Variant = "landing" | "app";
 type Role = "passenger" | "driver";
@@ -34,7 +36,7 @@ interface Props {
 const PASSENGER_NAV_LINKS = [
   { href: "/create", label: "Book", icon: CalendarPlus },
   { href: "/my-requests", label: "My requests", icon: FileText },
-  { href: "/my-trips", label: "My trips", icon: History },
+  { href: "/activity", label: "My activity", icon: Activity },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
@@ -60,6 +62,7 @@ export default function AppHeader({
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const isLanding = variant === "landing";
 
@@ -81,6 +84,7 @@ export default function AppHeader({
   const subtleBg = solid && isLanding ? "#f0f4f8" : "rgba(255,255,255,0.12)";
 
   async function handleLogout() {
+    setShowLogoutModal(false);
     setLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -214,7 +218,7 @@ export default function AppHeader({
                 </Link>
               ))}
               <button
-                onClick={handleLogout}
+                onClick={() => setShowLogoutModal(true)}
                 disabled={loggingOut}
                 aria-label="Log out"
                 style={{
@@ -363,7 +367,7 @@ export default function AppHeader({
                 </Link>
               ))}
               <button
-                onClick={handleLogout}
+                onClick={() => setShowLogoutModal(true)}
                 disabled={loggingOut}
                 style={{
                   display: "flex",
@@ -419,6 +423,11 @@ export default function AppHeader({
           .appheader-mobile-toggle { display: flex !important; }
         }
       `}</style>
+      <LogoutConfirmModal
+        open={showLogoutModal}
+        onConfirm={handleLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </header>
   );
 }

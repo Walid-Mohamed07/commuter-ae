@@ -8,6 +8,8 @@ const DriverDocumentsSchema = new Schema(
     carLicenseFront: { type: String, default: null },
     carLicenseBack: { type: String, default: null },
     criminalRecord: { type: String, default: null },
+    profilePic: { type: String, default: null },
+    carImage: { type: String, default: null },
   },
   { _id: false },
 );
@@ -28,9 +30,14 @@ const DriverSchema = new Schema(
       type: String,
       enum: ["private", "taxi", "van", "microbus"],
     },
-    vehicleName: { type: String, trim: true },
+    carBrand: { type: String, trim: true },
+    carModel: { type: String, trim: true },
+    modelYear: { type: Number },
     vehicleColor: { type: String, trim: true },
-    licensePlate: { type: String, trim: true },
+    plateChar1: { type: String, trim: true },
+    plateChar2: { type: String, trim: true },
+    plateChar3: { type: String, trim: true },
+    plateDigits: { type: String, trim: true }, // "9872"
     licenseExpiry: { type: String }, // "YYYY-MM-DD"
     carCapacity: { type: Number }, // server-derived from carType
 

@@ -40,7 +40,9 @@ export default function Pagination({ page, totalPages }: Props) {
     fontSize: 14,
     fontWeight: 700,
     textDecoration: "none",
-    border: "1px solid #e2e8ec",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#e2e8ec",
     background: "#fff",
     color: "#0B1E3D",
   };

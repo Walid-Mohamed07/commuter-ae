@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Availability } from "@/models/Availability";
+import { Driver } from "@/models/Driver";
 import AvailabilityClient from "./AvailabilityClient";
 
 export const metadata = { title: "Availability — Commuter" };
@@ -12,13 +13,17 @@ export default async function AvailabilityPage() {
   if (session.role !== "driver") redirect("/my-trips");
 
   await connectDB();
-  const records = await Availability.find({ driverId: session.userId })
-    .sort({ date: 1 })
-    .lean();
+  const [records, driver] = await Promise.all([
+    Availability.find({ driverId: session.userId }).sort({ date: 1 }).lean(),
+    Driver.findOne({ userId: session.userId })
+      .select("verificationStatus")
+      .lean<{ verificationStatus?: string }>(),
+  ]);
 
   return (
     <AvailabilityClient
       email={session.email}
+      verificationStatus={driver?.verificationStatus ?? "incomplete"}
       initialRecords={records.map((r) => ({
         _id: String(r._id),
         date: r.date,
@@ -30,3 +35,4 @@ export default async function AvailabilityPage() {
     />
   );
 }
+

@@ -5,9 +5,14 @@ import { getSession } from "@/lib/auth/session";
 
 const REQUIRED_VEHICLE_FIELDS = [
   "carType",
-  "vehicleName",
+  "carBrand",
+  "carModel",
+  "modelYear",
   "vehicleColor",
-  "licensePlate",
+  "plateChar1",
+  "plateChar2",
+  "plateChar3",
+  "plateDigits",
   "licenseExpiry",
 ] as const;
 
@@ -18,13 +23,20 @@ const REQUIRED_DOC_FIELDS = [
   "carLicenseFront",
   "carLicenseBack",
   "criminalRecord",
+  "profilePic",
+  "carImage",
 ] as const;
 
 const FIELD_LABELS: Record<string, string> = {
   carType: "Car type",
-  vehicleName: "Vehicle",
+  carBrand: "Car brand",
+  carModel: "Car model",
+  modelYear: "Model year",
   vehicleColor: "Color",
-  licensePlate: "License plate",
+  plateChar1: "License plate (letter 1)",
+  plateChar2: "License plate (letter 2)",
+  plateChar3: "License plate (letter 3)",
+  plateDigits: "License plate (numbers)",
   licenseExpiry: "License expiry",
   nationalIdFront: "National ID (Front)",
   nationalIdBack: "National ID (Back)",
@@ -32,6 +44,8 @@ const FIELD_LABELS: Record<string, string> = {
   carLicenseFront: "Car license (Front)",
   carLicenseBack: "Car license (Back)",
   criminalRecord: "Criminal record certificate",
+  profilePic: "Profile picture",
+  carImage: "Car image",
 };
 
 export async function POST() {

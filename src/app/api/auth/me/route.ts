@@ -54,12 +54,19 @@ export async function PATCH(req: NextRequest) {
     const {
       gender,
       carType,
-      vehicleName,
+      carBrand,
+      carModel,
+      modelYear,
       vehicleColor,
-      licensePlate,
+      plateChar1,
+      plateChar2,
+      plateChar3,
+      plateDigits,
       licenseExpiry,
       documents,
     } = body;
+
+    const ARABIC_CHAR = /^[\u0600-\u06FF]$/;
 
     const driverUpdate: Record<string, unknown> = {};
     if (gender === "male" || gender === "female") driverUpdate.gender = gender;
@@ -68,9 +75,15 @@ export async function PATCH(req: NextRequest) {
       // Server-authoritative capacity — never trust client input.
       driverUpdate.carCapacity = carTypeToCapacity(carType as CarType);
     }
-    if (vehicleName?.trim()) driverUpdate.vehicleName = vehicleName.trim();
+    if (carBrand?.trim()) driverUpdate.carBrand = carBrand.trim();
+    if (carModel?.trim()) driverUpdate.carModel = carModel.trim();
+    if (Number.isInteger(modelYear) && modelYear > 1900 && modelYear < 2100)
+      driverUpdate.modelYear = modelYear;
     if (vehicleColor?.trim()) driverUpdate.vehicleColor = vehicleColor.trim();
-    if (licensePlate?.trim()) driverUpdate.licensePlate = licensePlate.trim();
+    if (ARABIC_CHAR.test(plateChar1)) driverUpdate.plateChar1 = plateChar1;
+    if (ARABIC_CHAR.test(plateChar2)) driverUpdate.plateChar2 = plateChar2;
+    if (ARABIC_CHAR.test(plateChar3)) driverUpdate.plateChar3 = plateChar3;
+    if (/^\d{4}$/.test(plateDigits)) driverUpdate.plateDigits = plateDigits;
     if (licenseExpiry?.trim())
       driverUpdate.licenseExpiry = licenseExpiry.trim();
 
@@ -81,6 +94,8 @@ export async function PATCH(req: NextRequest) {
       "carLicenseFront",
       "carLicenseBack",
       "criminalRecord",
+      "profilePic",
+      "carImage",
     ];
     if (documents && typeof documents === "object") {
       for (const key of ALLOWED_DOC_KEYS) {

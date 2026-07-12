@@ -55,7 +55,8 @@ export async function POST(req: NextRequest) {
       role,
       verificationStatus: driver?.verificationStatus ?? "incomplete",
     });
-  } catch {
+  } catch (err) {
+    console.error("Login error:", err);
     return NextResponse.json(
       { error: "Login failed. Please try again." },
       { status: 500 },

@@ -29,9 +29,14 @@ export default async function ProfilePage() {
     const driver = await Driver.findOne({ userId: session.userId }).lean<{
       gender: "male" | "female";
       carType?: "private" | "taxi" | "van" | "microbus";
-      vehicleName?: string;
+      carBrand?: string;
+      carModel?: string;
+      modelYear?: number;
       vehicleColor?: string;
-      licensePlate?: string;
+      plateChar1?: string;
+      plateChar2?: string;
+      plateChar3?: string;
+      plateDigits?: string;
       licenseExpiry?: string;
       carCapacity?: number;
       verificationStatus: "incomplete" | "pending" | "verified";
@@ -47,15 +52,20 @@ export default async function ProfilePage() {
         initialPhone={user.phone ?? ""}
         gender={driver.gender}
         carType={driver.carType ?? ""}
-        vehicleName={driver.vehicleName ?? ""}
+        carBrand={driver.carBrand ?? ""}
+        carModel={driver.carModel ?? ""}
+        modelYear={driver.modelYear ?? null}
         vehicleColor={driver.vehicleColor ?? ""}
-        licensePlate={driver.licensePlate ?? ""}
+        plateChar1={driver.plateChar1 ?? ""}
+        plateChar2={driver.plateChar2 ?? ""}
+        plateChar3={driver.plateChar3 ?? ""}
+        plateDigits={driver.plateDigits ?? ""}
         licenseExpiry={driver.licenseExpiry ?? ""}
         carCapacity={driver.carCapacity}
         documents={driver.documents ?? {}}
         verificationStatus={driver.verificationStatus}
         profileSince={driver.createdAt.toISOString()}
-        initialSavedAddresses={user.savedAddresses ?? []}
+        initialSavedAddresses={JSON.parse(JSON.stringify(user.savedAddresses ?? []))}
       />
     );
   }
@@ -76,7 +86,7 @@ export default async function ProfilePage() {
       initialName={user.name}
       email={user.email}
       initialPhone={user.phone ?? ""}
-      initialSavedAddresses={user.savedAddresses ?? []}
+      initialSavedAddresses={JSON.parse(JSON.stringify(user.savedAddresses ?? []))}
     />
   );
 }

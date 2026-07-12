@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Bookmark, Plus, Pencil, Trash2, X, Loader2 } from "lucide-react";
-import AddressInput from "@/components/landing/AddressInput";
+import LocationPickerMap from "@/components/map/LocationPickerMap";
 import type { SavedAddress } from "@/types/shared";
 import type { TripPoint } from "@/lib/store/useTripStore";
 
@@ -13,6 +13,7 @@ interface AddrForm {
   open: boolean;
   editId: string | null;
   label: string;
+  otherLabel: string;
   point: TripPoint | null;
   saving: boolean;
   error: string;
@@ -22,10 +23,13 @@ const BLANK_FORM: AddrForm = {
   open: false,
   editId: null,
   label: "",
+  otherLabel: "",
   point: null,
   saving: false,
   error: "",
 };
+
+const PRESET_LABELS = ["Home", "Work"];
 
 export default function SavedAddressesSection({ initialAddresses }: Props) {
   const [addresses, setAddresses] = useState<SavedAddress[]>(initialAddresses);
@@ -36,10 +40,12 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
   }
 
   function openEditForm(a: SavedAddress) {
+    const isPreset = PRESET_LABELS.includes(a.label);
     setAddrForm({
       open: true,
       editId: a._id,
-      label: a.label,
+      label: isPreset ? a.label : "Other",
+      otherLabel: isPreset ? "" : a.label,
       point: { address: a.address, lat: a.lat, lng: a.lng },
       saving: false,
       error: "",
@@ -51,7 +57,9 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
   }
 
   async function saveAddress() {
-    if (!addrForm.label.trim()) {
+    const resolvedLabel =
+      addrForm.label === "Other" ? addrForm.otherLabel.trim() : addrForm.label;
+    if (!resolvedLabel) {
       setAddrForm((prev) => ({ ...prev, error: "Label required." }));
       return;
     }
@@ -62,7 +70,7 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
     setAddrForm((prev) => ({ ...prev, saving: true, error: "" }));
     try {
       const body = {
-        label: addrForm.label.trim(),
+        label: resolvedLabel,
         address: addrForm.point.address,
         lat: addrForm.point.lat,
         lng: addrForm.point.lng,
@@ -231,16 +239,14 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
                 marginBottom: 6,
               }}
             >
-              Label (e.g. Home, Work, Gym)
+              Label
             </label>
-            <input
+            <select
               id="addr-label"
-              type="text"
               value={addrForm.label}
               onChange={(e) =>
-                setAddrForm((prev) => ({ ...prev, label: e.target.value }))
+                setAddrForm((prev) => ({ ...prev, label: e.target.value, otherLabel: e.target.value !== "Other" ? "" : prev.otherLabel }))
               }
-              placeholder="Home"
               style={{
                 width: "100%",
                 height: 44,
@@ -253,10 +259,41 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
                 background: "#fff",
                 outline: "none",
                 boxSizing: "border-box",
+                cursor: "pointer",
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "#00C2A8")}
               onBlur={(e) => (e.currentTarget.style.borderColor = "#d0d8e0")}
-            />
+            >
+              <option value="">Select…</option>
+              <option value="Home">Home</option>
+              <option value="Work">Work</option>
+              <option value="Other">Other…</option>
+            </select>
+            {addrForm.label === "Other" && (
+              <input
+                type="text"
+                value={addrForm.otherLabel}
+                onChange={(e) =>
+                  setAddrForm((prev) => ({ ...prev, otherLabel: e.target.value }))
+                }
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  height: 44,
+                  padding: "0 14px",
+                  borderRadius: 10,
+                  border: "1.5px solid #d0d8e0",
+                  fontSize: 15,
+                  fontFamily: "inherit",
+                  color: "#0B1E3D",
+                  background: "#fff",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "#00C2A8")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "#d0d8e0")}
+              />
+            )}
           </div>
 
           <div>
@@ -269,13 +306,18 @@ export default function SavedAddressesSection({ initialAddresses }: Props) {
                 marginBottom: 6,
               }}
             >
-              Address
+              Location
             </label>
-            <AddressInput
-              id={`addr-point-${addrForm.editId ?? "new"}`}
-              placeholder="Search for address"
-              value={addrForm.point}
-              onChange={(p) => setAddrForm((prev) => ({ ...prev, point: p }))}
+            <LocationPickerMap
+              lat={addrForm.point ? String(addrForm.point.lat) : ""}
+              lng={addrForm.point ? String(addrForm.point.lng) : ""}
+              name={addrForm.point?.address ?? ""}
+              onChange={(lat, lng, name) =>
+                setAddrForm((prev) => ({
+                  ...prev,
+                  point: lat && lng ? { address: name, lat: parseFloat(lat), lng: parseFloat(lng) } : null,
+                }))
+              }
             />
           </div>
 

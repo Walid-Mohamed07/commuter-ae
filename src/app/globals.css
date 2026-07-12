@@ -59,6 +59,17 @@ html[dir="rtl"] * {
   direction: rtl;
 }
 
+/* Booking / activity card hover */
+.request-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.request-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(11, 30, 61, 0.12);
+  border-color: #00c2a8;
+}
+
 html[dir="rtl"] p,
 html[dir="rtl"] h1,
 html[dir="rtl"] h2,

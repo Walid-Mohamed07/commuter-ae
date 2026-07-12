@@ -10,6 +10,8 @@ import {
   Loader2,
   CalendarClock,
   Navigation,
+  Lock,
+  Mail,
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import BottomSheet from "@/components/shared/BottomSheet";
@@ -46,7 +48,14 @@ function to12h(hhmm: string): string {
   const ampm = h >= 12 ? "PM" : "AM";
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
+// Removal locks at 8:00 PM the day before the availability date.
+function isLocked(dateISO: string): boolean {
+  const cutoff = new Date(`${dateISO}T20:00:00`);
+  cutoff.setDate(cutoff.getDate() - 1);
+  return new Date() >= cutoff;
+}
 
+const ADMIN_CONTACT = "support@commuter.app";
 const labelStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
@@ -72,17 +81,20 @@ const inputStyle: React.CSSProperties = {
 export default function AvailabilityClient({
   email,
   initialRecords,
+  verificationStatus,
 }: {
   email: string;
   initialRecords: AvailabilityRecord[];
+  verificationStatus: string;
 }) {
+  const isVerified = verificationStatus === "verified";
   const [records, setRecords] = useState(initialRecords);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [startLocation, setStartLocation] = useState<TripPoint | null>(null);
   const [endLocation, setEndLocation] = useState<TripPoint | null>(null);
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [startTime, setStartTime] = useState("07:00");
+  const [endTime, setEndTime] = useState("17:00");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -244,6 +256,7 @@ export default function AvailabilityClient({
           {records.length > 0 && (
             <button
               type="button"
+              disabled={!isVerified}
               onClick={() => setModalOpen(true)}
               style={{
                 display: "flex",
@@ -251,13 +264,13 @@ export default function AvailabilityClient({
                 gap: 6,
                 height: 44,
                 padding: "0 16px",
-                background: "#0B1E3D",
+                background: isVerified ? "#0B1E3D" : "#c9d0d6",
                 color: "#ffffff",
                 fontWeight: 700,
                 fontSize: 14,
                 border: "none",
                 borderRadius: 10,
-                cursor: "pointer",
+                cursor: isVerified ? "pointer" : "not-allowed",
                 fontFamily: "inherit",
                 flexShrink: 0,
               }}
@@ -267,6 +280,22 @@ export default function AvailabilityClient({
             </button>
           )}
         </div>
+
+        {!isVerified && (
+          <div
+            style={{
+              padding: "12px 16px",
+              marginBottom: 16,
+              background: "#FFF8E1",
+              border: "1px solid #FDE7A0",
+              borderRadius: 12,
+              fontSize: 13,
+              color: "#8A6D00",
+            }}
+          >
+            Your profile must be verified before you can add availability.
+          </div>
+        )}
 
         {records.length === 0 ? (
           <div
@@ -288,6 +317,7 @@ export default function AvailabilityClient({
             />
             <button
               type="button"
+              disabled={!isVerified}
               onClick={() => setModalOpen(true)}
               style={{
                 display: "flex",
@@ -295,13 +325,13 @@ export default function AvailabilityClient({
                 gap: 8,
                 height: 48,
                 padding: "0 22px",
-                background: "#0B1E3D",
+                background: isVerified ? "#0B1E3D" : "#c9d0d6",
                 color: "#ffffff",
                 fontWeight: 700,
                 fontSize: 15,
                 border: "none",
                 borderRadius: 12,
-                cursor: "pointer",
+                cursor: isVerified ? "pointer" : "not-allowed",
                 fontFamily: "inherit",
               }}
             >
@@ -375,31 +405,62 @@ export default function AvailabilityClient({
                     – {to12h(r.endTime)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(r._id)}
-                  disabled={deletingId === r._id}
-                  aria-label="Delete availability"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#FFEBEE",
-                    color: "#E74C3C",
-                    cursor: deletingId === r._id ? "not-allowed" : "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  {deletingId === r._id ? (
-                    <Loader2 size={16} className="spin" aria-hidden="true" />
-                  ) : (
-                    <Trash2 size={16} aria-hidden="true" />
-                  )}
-                </button>
+                {isLocked(r.date) ? (
+                  <a
+                    href={`mailto:${ADMIN_CONTACT}?subject=${encodeURIComponent(
+                      `Availability change request \u2014 ${r.date}`,
+                    )}&body=${encodeURIComponent(
+                      `I want to change/cancel my availability on ${r.date} (${r.startTime}\u2013${r.endTime}).`,
+                    )}`}
+                    aria-label="Contact admin to change locked availability"
+                    title="Locked \u2014 contact admin to change"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 5,
+                      height: 40,
+                      padding: "0 12px",
+                      borderRadius: 10,
+                      border: "1.5px solid #e8edf0",
+                      background: "#f8f9fa",
+                      color: "#5A6A7A",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textDecoration: "none",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Lock size={13} aria-hidden="true" />
+                    <Mail size={13} aria-hidden="true" />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(r._id)}
+                    disabled={deletingId === r._id}
+                    aria-label="Delete availability"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#FFEBEE",
+                      color: "#E74C3C",
+                      cursor: deletingId === r._id ? "not-allowed" : "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {deletingId === r._id ? (
+                      <Loader2 size={16} className="spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 size={16} aria-hidden="true" />
+                    )}
+                  </button>
+                )}
               </div>
             ))}
           </div>

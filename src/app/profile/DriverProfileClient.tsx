@@ -22,7 +22,9 @@ interface DocKey {
     | "drivingLicense"
     | "carLicenseFront"
     | "carLicenseBack"
-    | "criminalRecord";
+    | "criminalRecord"
+    | "profilePic"
+    | "carImage";
   label: string;
 }
 
@@ -33,6 +35,8 @@ const DOCUMENTS: DocKey[] = [
   { key: "carLicenseFront", label: "Car license (Front)" },
   { key: "carLicenseBack", label: "Car license (Back)" },
   { key: "criminalRecord", label: "Criminal record certificate" },
+  { key: "profilePic", label: "Profile picture" },
+  { key: "carImage", label: "Car image" },
 ];
 
 interface Props {
@@ -41,9 +45,14 @@ interface Props {
   initialPhone: string;
   gender: "male" | "female";
   carType: CarType | "";
-  vehicleName: string;
+  carBrand: string;
+  carModel: string;
+  modelYear: number | null;
   vehicleColor: string;
-  licensePlate: string;
+  plateChar1: string;
+  plateChar2: string;
+  plateChar3: string;
+  plateDigits: string;
   licenseExpiry: string;
   carCapacity?: number;
   documents: Record<string, string | null>;
@@ -106,15 +115,46 @@ function saveButtonStyle(loading: boolean): React.CSSProperties {
   };
 }
 
+function ProgressBar({ pct, filled, total }: { pct: number; filled: number; total: number }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "#5A6A7A", fontWeight: 500 }}>
+          {filled} / {total} complete
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: pct === 100 ? "#27AE60" : "#0B1E3D" }}>
+          {pct}%
+        </span>
+      </div>
+      <div style={{ height: 6, background: "#eef0f3", borderRadius: 99, overflow: "hidden" }}>
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            background: pct === 100 ? "#27AE60" : "#00C2A8",
+            borderRadius: 99,
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function DriverProfileClient({
   initialName,
   email,
   initialPhone,
   gender: initialGender,
   carType: initialCarType,
-  vehicleName: initialVehicleName,
+  carBrand: initialCarBrand,
+  carModel: initialCarModel,
+  modelYear: initialModelYear,
   vehicleColor: initialVehicleColor,
-  licensePlate: initialLicensePlate,
+  plateChar1: initialPlateChar1,
+  plateChar2: initialPlateChar2,
+  plateChar3: initialPlateChar3,
+  plateDigits: initialPlateDigits,
   licenseExpiry: initialLicenseExpiry,
   carCapacity,
   documents: initialDocuments,
@@ -134,9 +174,16 @@ export default function DriverProfileClient({
 
   // Driver details
   const [carType, setCarType] = useState<CarType | "">(initialCarType);
-  const [vehicleName, setVehicleName] = useState(initialVehicleName);
+  const [carBrand, setCarBrand] = useState(initialCarBrand);
+  const [carModel, setCarModel] = useState(initialCarModel);
+  const [modelYear, setModelYear] = useState(
+    initialModelYear ? String(initialModelYear) : "",
+  );
   const [vehicleColor, setVehicleColor] = useState(initialVehicleColor);
-  const [licensePlate, setLicensePlate] = useState(initialLicensePlate);
+  const [plateChar1, setPlateChar1] = useState(initialPlateChar1);
+  const [plateChar2, setPlateChar2] = useState(initialPlateChar2);
+  const [plateChar3, setPlateChar3] = useState(initialPlateChar3);
+  const [plateDigits, setPlateDigits] = useState(initialPlateDigits);
   const [licenseExpiry, setLicenseExpiry] = useState(initialLicenseExpiry);
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsMsg, setDetailsMsg] = useState<{
@@ -153,6 +200,12 @@ export default function DriverProfileClient({
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // License plate refs for auto-focus
+  const plateChar1Ref = useRef<HTMLInputElement>(null);
+  const plateChar2Ref = useRef<HTMLInputElement>(null);
+  const plateChar3Ref = useRef<HTMLInputElement>(null);
+  const plateDigitsRef = useRef<HTMLInputElement>(null);
+
   // Verification
   const [verificationStatus, setVerificationStatus] = useState(
     initialVerificationStatus,
@@ -162,6 +215,32 @@ export default function DriverProfileClient({
     ok: boolean;
     text: string;
   } | null>(null);
+
+  // Progress helpers (after all useState)
+  const DETAIL_FIELDS = [
+    carType,
+    carBrand.trim(),
+    carModel.trim(),
+    (() => {
+      const y = Number(modelYear);
+      return modelYear.trim() && Number.isInteger(y) && y >= 1900 && y <= 2100
+        ? modelYear
+        : "";
+    })(),
+    vehicleColor.trim(),
+    /^[\u0600-\u06FF]$/.test(plateChar1) ? plateChar1 : "",
+    /^[\u0600-\u06FF]$/.test(plateChar2) ? plateChar2 : "",
+    /^[\u0600-\u06FF]$/.test(plateChar3) ? plateChar3 : "",
+    /^\d{4}$/.test(plateDigits) ? plateDigits : "",
+    licenseExpiry.trim(),
+  ];
+  const detailsFilledCount = DETAIL_FIELDS.filter(Boolean).length;
+  const detailsPct = Math.round((detailsFilledCount / DETAIL_FIELDS.length) * 100);
+
+  const docsFilledCount = DOCUMENTS.filter((d) => Boolean(documents[d.key])).length;
+  const docsPct = Math.round((docsFilledCount / DOCUMENTS.length) * 100);
+
+  const canSubmit = detailsPct === 100 && docsPct === 100;
 
   async function savePersonal(e: React.FormEvent) {
     e.preventDefault();
@@ -196,11 +275,20 @@ export default function DriverProfileClient({
 
   async function saveDetails(e: React.FormEvent) {
     e.preventDefault();
+    const yearNum = Number(modelYear);
     if (
       !carType ||
-      !vehicleName.trim() ||
+      !carBrand.trim() ||
+      !carModel.trim() ||
+      !modelYear.trim() ||
+      !Number.isInteger(yearNum) ||
+      yearNum < 1900 ||
+      yearNum > 2100 ||
       !vehicleColor.trim() ||
-      !licensePlate.trim() ||
+      !/^[\u0600-\u06FF]$/.test(plateChar1) ||
+      !/^[\u0600-\u06FF]$/.test(plateChar2) ||
+      !/^[\u0600-\u06FF]$/.test(plateChar3) ||
+      !/^\d{4}$/.test(plateDigits) ||
       !licenseExpiry.trim()
     ) {
       setDetailsMsg({ ok: false, text: "All vehicle details are required." });
@@ -216,9 +304,14 @@ export default function DriverProfileClient({
           name: name.trim(),
           phone: phone.trim(),
           carType,
-          vehicleName: vehicleName.trim(),
+          carBrand: carBrand.trim(),
+          carModel: carModel.trim(),
+          modelYear: yearNum,
           vehicleColor: vehicleColor.trim(),
-          licensePlate: licensePlate.trim(),
+          plateChar1,
+          plateChar2,
+          plateChar3,
+          plateDigits,
           licenseExpiry: licenseExpiry.trim(),
         }),
       });
@@ -402,13 +495,54 @@ export default function DriverProfileClient({
               <label htmlFor="p-phone" style={labelStyle}>
                 Phone
               </label>
-              <input
-                id="p-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                style={inputStyle}
-              />
+              <div
+                style={{
+                  ...inputStyle,
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "stretch",
+                  overflow: "hidden",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 12px",
+                    fontWeight: 600,
+                    color: "#0B1E3D",
+                    background: "#eef1f3",
+                    borderRight: "1.5px solid #e8edf0",
+                  }}
+                >
+                  +20
+                </span>
+                <input
+                  id="p-phone"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="1XXXXXXXXX"
+                  value={phone.replace(/^\+?20/, "")}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setPhone(digits ? `+20${digits}` : "");
+                  }}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: "100%",
+                    padding: "0 14px",
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    fontSize: 14,
+                    fontFamily: "inherit",
+                    color: "#0B1E3D",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
             </div>
             <div>
               <label htmlFor="p-gender" style={labelStyle}>
@@ -454,6 +588,7 @@ export default function DriverProfileClient({
 
         {/* Driver details */}
         <Section title="Driver details">
+          <ProgressBar pct={detailsPct} filled={detailsFilledCount} total={DETAIL_FIELDS.length} />
           <form onSubmit={saveDetails} noValidate style={cardStyle}>
             <div>
               <label htmlFor="d-carType" style={labelStyle}>
@@ -495,14 +630,52 @@ export default function DriverProfileClient({
               }}
             >
               <div>
-                <label htmlFor="d-vehicleName" style={labelStyle}>
-                  Vehicle
+                <label htmlFor="d-carBrand" style={labelStyle}>
+                  Brand
                 </label>
                 <input
-                  id="d-vehicleName"
+                  id="d-carBrand"
                   type="text"
-                  value={vehicleName}
-                  onChange={(e) => setVehicleName(e.target.value)}
+                  placeholder="BYD"
+                  value={carBrand}
+                  onChange={(e) => setCarBrand(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label htmlFor="d-carModel" style={labelStyle}>
+                  Model
+                </label>
+                <input
+                  id="d-carModel"
+                  type="text"
+                  placeholder="F3"
+                  value={carModel}
+                  onChange={(e) => setCarModel(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div>
+                <label htmlFor="d-modelYear" style={labelStyle}>
+                  Model year
+                </label>
+                <input
+                  id="d-modelYear"
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="2024"
+                  value={modelYear}
+                  onChange={(e) =>
+                    setModelYear(e.target.value.replace(/\D/g, "").slice(0, 4))
+                  }
                   style={inputStyle}
                 />
               </div>
@@ -520,16 +693,66 @@ export default function DriverProfileClient({
               </div>
             </div>
             <div>
-              <label htmlFor="d-plate" style={labelStyle}>
-                License plate
-              </label>
-              <input
-                id="d-plate"
-                type="text"
-                value={licensePlate}
-                onChange={(e) => setLicensePlate(e.target.value)}
-                style={inputStyle}
-              />
+              <label style={labelStyle}>License plate</label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  direction: "rtl",
+                }}
+              >
+                {[
+                  [plateChar1, setPlateChar1, plateChar1Ref, plateChar2Ref] as const,
+                  [plateChar2, setPlateChar2, plateChar2Ref, plateChar3Ref] as const,
+                  [plateChar3, setPlateChar3, plateChar3Ref, plateDigitsRef] as const,
+                ].map(([val, setVal, currentRef, nextRef], i) => (
+                  <input
+                    key={i}
+                    ref={currentRef}
+                    type="text"
+                    inputMode="text"
+                    maxLength={1}
+                    value={val}
+                    onChange={(e) => {
+                      const ch = e.target.value
+                        .replace(/[^\u0600-\u06FF]/g, "")
+                        .slice(-1);
+                      setVal(ch);
+                      if (ch) {
+                        nextRef.current?.focus();
+                      }
+                    }}
+                    style={{
+                      ...inputStyle,
+                      textAlign: "center",
+                      width: 52,
+                      flexShrink: 0,
+                    }}
+                  />
+                ))}
+                <input
+                  ref={plateDigitsRef}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="9872"
+                  value={plateDigits}
+                  onChange={(e) =>
+                    setPlateDigits(e.target.value.replace(/\D/g, "").slice(0, 4))
+                  }
+                  style={{ ...inputStyle, textAlign: "center", flex: 1 }}
+                />
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#5A6A7A",
+                  marginTop: 5,
+                  marginBottom: 0,
+                }}
+              >
+                Arabic letters only, then 4 numbers — e.g. ط ع ى 9872
+              </p>
             </div>
             <div>
               <label htmlFor="d-expiry" style={labelStyle}>
@@ -586,6 +809,7 @@ export default function DriverProfileClient({
 
         {/* Documents */}
         <Section title="Documents">
+          <ProgressBar pct={docsPct} filled={docsFilledCount} total={DOCUMENTS.length} />
           <div style={{ ...cardStyle, gap: 10 }}>
             {DOCUMENTS.map((doc) => {
               const path = documents[doc.key];
@@ -697,6 +921,11 @@ export default function DriverProfileClient({
               Once your driver details and all documents are filled in, submit
               your profile for review.
             </p>
+            {!canSubmit && (
+              <p style={{ margin: 0, fontSize: 12, color: "#E65100", padding: "6px 10px", background: "#FFF3E0", borderRadius: 8 }}>
+                Complete all driver details ({detailsPct}%) and upload all documents ({docsPct}%) to enable submission.
+              </p>
+            )}
             {submitMsg && (
               <p
                 role="status"
@@ -713,8 +942,8 @@ export default function DriverProfileClient({
             <button
               type="button"
               onClick={submitForReview}
-              disabled={submitting}
-              style={saveButtonStyle(submitting)}
+              disabled={submitting || !canSubmit}
+              style={saveButtonStyle(submitting || !canSubmit)}
             >
               {submitting ? (
                 <Loader2 size={16} className="spin" aria-hidden="true" />

@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import authApi from "@/lib/api/auth";
 import { getUnreadCount } from "@/lib/api/notifications";
 import LanguageToggle from "./LanguageToggle";
+import LogoutConfirmModal from "@/components/shared/LogoutConfirmModal";
 import { useTranslations } from "next-intl";
 
 export default function UserNavbar() {
@@ -28,6 +29,7 @@ export default function UserNavbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userName, setUserName] = useState(t("default_user"));
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { name: authName, logout, profilePhoto } = useAuth();
 
@@ -62,6 +64,7 @@ export default function UserNavbar() {
   }, []);
 
   async function handleLogout() {
+    setShowLogoutModal(false);
     try {
       await authApi.logout();
     } catch {
@@ -329,7 +332,7 @@ export default function UserNavbar() {
                 />
                 <button
                   className="unav-drop-item unav-drop-danger"
-                  onClick={handleLogout}
+                  onClick={() => setShowLogoutModal(true)}
                 >
                   <LogOut size={16} />
                   {tCommon("sign_out")}
@@ -339,6 +342,11 @@ export default function UserNavbar() {
           </div>
         </div>
       </nav>
+      <LogoutConfirmModal
+        open={showLogoutModal}
+        onConfirm={handleLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </>
   );
 }

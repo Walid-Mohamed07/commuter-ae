@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   const data = await res.json();
   if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    console.error("[places/autocomplete]", data.status, data.error_message);
+    console.error("[api/directions]", data.status, data.error_message);
   }
   const leg = data.routes?.[0]?.legs?.[0];
   if (!leg) return NextResponse.json([]);

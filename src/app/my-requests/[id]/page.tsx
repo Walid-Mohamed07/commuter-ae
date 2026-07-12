@@ -239,7 +239,12 @@ export default async function RequestDetailPage({
                   overflow: "hidden",
                 }}
               >
-                <RouteMap pickup={t.pickup} dropoff={t.dropoff} height={180} />
+                <RouteMap
+                  pickup={t.pickup}
+                  dropoff={t.dropoff}
+                  height={220}
+                  interactive
+                />
 
                 <div style={{ padding: "16px 18px" }}>
                   {/* Trip header */}

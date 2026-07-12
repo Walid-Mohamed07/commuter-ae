@@ -39,7 +39,16 @@ function prettyDate(date: string): string {
   });
 }
 
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
+type BookingStatus =
+  | "pending_payment"
+  | "submitted"
+  | "matching"
+  | "confirmed"
+  | "active"
+  | "completed"
+  | "cancelled"
+  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -49,6 +58,21 @@ const PAY_PILL: Record<
   paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
   failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
   refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
+  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
+};
+
+const STATUS_PILL: Record<
+  BookingStatus,
+  { label: string; bg: string; color: string }
+> = {
+  pending_payment: { label: "Pending payment", bg: "#FFF3E0", color: "#E65100" },
+  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
+  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
+  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
+  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
+  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
+  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
+  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -99,6 +123,21 @@ const VEHICLE_OPTIONS: FilterDef = {
   })),
 };
 
+const STATUS_OPTIONS: FilterDef = {
+  key: "status",
+  label: "Status",
+  options: [
+    { value: "pending_payment", label: "Pending payment" },
+    { value: "submitted", label: "Submitted" },
+    { value: "matching", label: "Matching" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "active", label: "Active" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "time_out", label: "Timed out" },
+  ],
+};
+
 // ── shape ────────────────────────────────────────────────────────────────────
 
 interface LatLng {
@@ -110,6 +149,7 @@ interface TripRow {
   bookingId: string;
   date: string;
   paymentStatus: PaymentStatus;
+  status: BookingStatus;
   vehicleType: string;
   pickupAddress: string;
   dropoffAddress: string;
@@ -130,6 +170,8 @@ export default async function MyTripsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-trips");
+
+  if (session.role !== "driver") redirect("/activity");
 
   if (session.role === "driver") {
     return (
@@ -175,14 +217,31 @@ export default async function MyTripsPage({
     typeof params.payment === "string" ? params.payment : undefined;
   const vehicle =
     typeof params.vehicle === "string" ? params.vehicle : undefined;
+  const statusFilter =
+    typeof params.status === "string" ? params.status : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
   await connectDB();
+
+  // Lazy-expire bookings older than 2 h that are still pending_payment
+  await Booking.updateMany(
+    {
+      userId: session.userId,
+      status: "pending_payment",
+      paymentStatus: { $in: ["pending", "failed"] },
+      $expr: {
+        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
+      },
+    },
+    { $set: { status: "time_out", paymentStatus: "expired" } },
+  );
 
   const bookingMatch: Record<string, unknown> = {
     userId: new Types.ObjectId(session.userId),
   };
   if (payment && payment in PAY_PILL) bookingMatch.paymentStatus = payment;
+  if (statusFilter && statusFilter in STATUS_PILL)
+    bookingMatch.status = statusFilter;
 
   const tripMatchStage =
     vehicle && vehicle in VEHICLES
@@ -205,6 +264,7 @@ export default async function MyTripsPage({
               bookingId: "$_id",
               date: 1,
               paymentStatus: 1,
+              status: 1,
               createdAt: 1,
               vehicleType: "$trips.vehicleType",
               pickupAddress: "$trips.pickup.address",
@@ -232,6 +292,7 @@ export default async function MyTripsPage({
     bookingId: String(r.bookingId),
     date: r.date as string,
     paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
+    status: (r.status as BookingStatus) ?? "pending_payment",
     vehicleType: r.vehicleType as string,
     pickupAddress: (r.pickupAddress as string) ?? "—",
     dropoffAddress: (r.dropoffAddress as string) ?? "—",
@@ -252,7 +313,7 @@ export default async function MyTripsPage({
         : String(r.createdAt),
   }));
 
-  const hasFilters = Boolean(payment || vehicle);
+  const hasFilters = Boolean(payment || vehicle || statusFilter);
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -282,7 +343,7 @@ export default async function MyTripsPage({
           </p>
         </div>
 
-        <FilterBar filters={[PAYMENT_OPTIONS, VEHICLE_OPTIONS]} />
+        <FilterBar filters={[PAYMENT_OPTIONS, VEHICLE_OPTIONS, STATUS_OPTIONS]} />
 
         {trips.length === 0 ? (
           <EmptyState
@@ -318,6 +379,7 @@ export default async function MyTripsPage({
                 const vLabel =
                   VEHICLES[trip.vehicleType as VehicleKey]?.label ??
                   trip.vehicleType;
+                const timedOut = trip.status === "time_out";
                 return (
                   <Link
                     key={`${trip.bookingId}-${i}`}
@@ -330,6 +392,7 @@ export default async function MyTripsPage({
                       textDecoration: "none",
                       color: "inherit",
                       display: "block",
+                      opacity: timedOut ? 0.55 : 1,
                     }}
                   >
                     <RouteMap
@@ -377,6 +440,10 @@ export default async function MyTripsPage({
                           <Pill
                             {...(PAY_PILL[trip.paymentStatus] ??
                               PAY_PILL.pending)}
+                          />
+                          <Pill
+                            {...(STATUS_PILL[trip.status] ??
+                              STATUS_PILL.pending_payment)}
                           />
                         </div>
                         <span

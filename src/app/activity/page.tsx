@@ -9,11 +9,9 @@ import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
 import Pagination from "@/components/shared/Pagination";
-import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
-import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import type { VehicleKey } from "@/lib/config/vehicles";
 
-export const metadata = { title: "My requests — Commuter" };
+export const metadata = { title: "My activity — Commuter" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 8;
@@ -31,44 +29,14 @@ function truncate(s: string, max = 34): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
-
-const PAY_PILL: Record<
-  PaymentStatus,
-  { label: string; bg: string; color: string }
-> = {
-  pending: { label: "Awaiting payment", bg: "#FFF8E1", color: "#E65100" },
-  paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
-  failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
-  refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
-  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
-};
+type BookingStatus = "completed" | "cancelled";
 
 const STATUS_PILL: Record<
   BookingStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending_payment: {
-    label: "Pending payment",
-    bg: "#FFF3E0",
-    color: "#E65100",
-  },
-  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
-  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
-  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
   completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
   cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
-  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -117,75 +85,44 @@ interface BookingRow {
   date: string;
   trips: TripRow[];
   amountEgp: number;
-  paymentStatus: PaymentStatus;
   status: BookingStatus;
   createdAt: string;
 }
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
-const PAYMENT_OPTIONS: FilterDef = {
-  key: "payment",
-  label: "Payment",
-  options: [
-    { value: "paid", label: "Paid" },
-    { value: "pending", label: "Awaiting payment" },
-    { value: "failed", label: "Failed" },
-    { value: "refunded", label: "Refunded" },
-  ],
-};
-
 const STATUS_OPTIONS: FilterDef = {
   key: "status",
   label: "Status",
   options: [
-    { value: "pending_payment", label: "Pending payment" },
-    { value: "submitted", label: "Submitted" },
-    { value: "matching", label: "Matching" },
-    { value: "confirmed", label: "Confirmed" },
-    { value: "active", label: "Active" },
     { value: "completed", label: "Completed" },
     { value: "cancelled", label: "Cancelled" },
-    { value: "time_out", label: "Timed out" },
   ],
 };
 
-export default async function MyTripsPage({
+export default async function ActivityPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login?redirect=/my-requests");
+  if (!session) redirect("/login?redirect=/activity");
+  if (session.role === "driver") redirect("/my-trips");
 
   const params = await searchParams;
-  const payment =
-    typeof params.payment === "string" ? params.payment : undefined;
   const statusFilter =
     typeof params.status === "string" ? params.status : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
   await connectDB();
 
-  // Lazy-expire bookings older than 2 h that are still pending_payment
-  await Booking.updateMany(
-    {
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
-  const wallet = await getOrCreateWallet(session.userId);
-  const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const query: Record<string, unknown> = { userId: session.userId };
-  if (payment && payment in PAY_PILL) query.paymentStatus = payment;
-  if (statusFilter && statusFilter in STATUS_PILL) query.status = statusFilter;
+  const query: Record<string, unknown> = {
+    userId: session.userId,
+    status:
+      statusFilter && statusFilter in STATUS_PILL
+        ? statusFilter
+        : { $in: ["completed", "cancelled"] },
+  };
 
   const total = await Booking.countDocuments(query);
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -196,7 +133,7 @@ export default async function MyTripsPage({
     .limit(PAGE_SIZE)
     .lean();
 
-  const hasFilters = Boolean(payment || statusFilter);
+  const hasFilters = Boolean(statusFilter);
 
   // Serialise — strip ObjectId / Date to plain strings
   const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
@@ -204,8 +141,7 @@ export default async function MyTripsPage({
       id: String(b._id),
       date: b.date as string,
       amountEgp: b.amountEgp as number,
-      paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
-      status: (b.status as BookingStatus) ?? "pending_payment",
+      status: (b.status as BookingStatus) ?? "completed",
       createdAt:
         b.createdAt instanceof Date
           ? b.createdAt.toISOString()
@@ -252,27 +188,27 @@ export default async function MyTripsPage({
               letterSpacing: "-0.02em",
             }}
           >
-            My requests
+            My activity
           </h1>
           <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
             {total === 0
               ? hasFilters
-                ? "No bookings match these filters."
-                : "No bookings yet."
-              : `${total} booking${total === 1 ? "" : "s"}`}
+                ? "No activity matches this filter."
+                : "No completed or cancelled requests yet."
+              : `${total} finished request${total === 1 ? "" : "s"}`}
           </p>
         </div>
 
-        <FilterBar filters={[PAYMENT_OPTIONS, STATUS_OPTIONS]} />
+        <FilterBar filters={[STATUS_OPTIONS]} />
 
         {bookings.length === 0 ? (
           <EmptyState
-            icon="🚗"
-            title={hasFilters ? "Nothing here" : "No trips yet"}
+            icon="🧾"
+            title={hasFilters ? "Nothing here" : "No activity yet"}
             description={
               hasFilters
-                ? "Try clearing the filters to see all your bookings."
-                : "Book your first commute ride and it will appear here."
+                ? "Try clearing the filter to see all finished requests."
+                : "Completed and cancelled requests will show up here."
             }
             action={
               <Link
@@ -322,175 +258,168 @@ export default async function MyTripsPage({
                 <div style={{ flex: 1, height: 1, background: "#eef0f3" }} />
               </div>
 
-              {/* Booking cards for this date */}
-              {dayBookings.map((booking) => {
-                const needsPayment =
-                  booking.paymentStatus === "pending" ||
-                  booking.paymentStatus === "failed";
-                const timedOut = booking.status === "time_out";
-                const first = booking.trips[0];
-                const vLabel = first
-                  ? VEHICLES[first.vehicleType as VehicleKey]?.label ??
-                    first.vehicleType
-                  : "—";
-                return (
-                  <div
-                    key={booking.id}
-                    className="request-card"
+              {dayBookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="request-card"
+                  style={{
+                    background: "#fff",
+                    borderRadius: 16,
+                    borderWidth: "3px 1px 1px 1px",
+                    borderStyle: "solid",
+                    borderColor: `${
+                      booking.status === "cancelled" ? "#E74C3C" : "#0B1E3D"
+                    } #eef0f3 #eef0f3 #eef0f3`,
+                    marginBottom: 12,
+                    overflow: "hidden",
+                    boxShadow: "0 1px 2px rgba(11,30,61,0.04)",
+                  }}
+                >
+                  <Link
+                    href={`/my-requests/${booking.id}`}
                     style={{
-                      background: "#fff",
-                      borderRadius: 18,
-                      borderWidth: "3px 1px 1px 1px",
-                      borderStyle: "solid",
-                      borderColor: "#00C2A8 #eef0f3 #eef0f3 #eef0f3",
-                      marginBottom: 14,
-                      overflow: "hidden",
-                      opacity: timedOut ? 0.6 : 1,
-                      boxShadow: "0 2px 10px rgba(11,30,61,0.05)",
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
                     }}
                   >
-                    <Link
-                      href={`/my-requests/${booking.id}`}
+                    {/* Booking header row */}
+                    <div
                       style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        display: "block",
+                        padding: "18px 18px 14px",
+                        borderBottom: "1px solid #f4f6f8",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
                       }}
                     >
-                      {/* Status pills */}
-                      <div
+                      <Pill
+                        {...(STATUS_PILL[booking.status] ??
+                          STATUS_PILL.completed)}
+                      />
+                      <span
                         style={{
-                          display: "flex",
-                          gap: 6,
-                          flexWrap: "wrap",
-                          padding: "18px 18px 14px",
-                          borderBottom: "1px solid #f4f6f8",
+                          fontWeight: 800,
+                          fontSize: 18,
+                          color: "#0B1E3D",
+                          fontVariantNumeric: "tabular-nums",
                         }}
                       >
-                        <Pill
-                          {...(STATUS_PILL[booking.status] ??
-                            STATUS_PILL.pending_payment)}
-                        />
-                        <Pill
-                          {...(PAY_PILL[booking.paymentStatus] ??
-                            PAY_PILL.pending)}
-                        />
-                      </div>
+                        {booking.amountEgp}{" "}
+                        <span style={{ fontSize: 12, color: "#9aa7b4" }}>
+                          EGP
+                        </span>
+                      </span>
+                    </div>
 
-                      {/* Body */}
-                      <div style={{ padding: "16px 18px 18px" }}>
-                        {/* Vehicle + amount */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginBottom: 16,
-                          }}
-                        >
+                    {/* First trip preview only — full list on detail page */}
+                    {booking.trips.slice(0, 1).map((trip, i) => {
+                      const vLabel =
+                        VEHICLES[trip.vehicleType as VehicleKey]?.label ??
+                        trip.vehicleType;
+                      return (
+                        <div key={i} style={{ padding: "16px 18px 18px" }}>
+                          {/* Vehicle + price */}
                           <div
                             style={{
                               display: "flex",
+                              justifyContent: "space-between",
                               alignItems: "center",
-                              gap: 10,
+                              marginBottom: 16,
                             }}
                           >
                             <div
                               style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 10,
-                                background: "#E6F8F5",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
+                                gap: 10,
                               }}
                             >
-                              <Car size={17} color="#00806E" aria-hidden="true" />
-                            </div>
-                            <div>
-                              <p
+                              <div
                                 style={{
-                                  margin: 0,
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 10,
+                                  background: "#E6F8F5",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Car
+                                  size={17}
+                                  color="#00806E"
+                                  aria-hidden="true"
+                                />
+                              </div>
+                              <span
+                                style={{
                                   fontSize: 14,
                                   fontWeight: 700,
                                   color: "#0B1E3D",
                                 }}
                               >
                                 {vLabel}
-                              </p>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: 12,
-                                  color: "#9aa7b4",
-                                }}
-                              >
-                                {booking.trips.length} trip
-                                {booking.trips.length === 1 ? "" : "s"}
-                              </p>
+                              </span>
                             </div>
-                          </div>
-                          <span
-                            style={{
-                              fontWeight: 800,
-                              fontSize: 18,
-                              color: "#0B1E3D",
-                              fontVariantNumeric: "tabular-nums",
-                            }}
-                          >
-                            {booking.amountEgp}{" "}
-                            <span style={{ fontSize: 12, color: "#9aa7b4" }}>
-                              EGP
+                            <span
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 700,
+                                color: "#00806E",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              {trip.priceEgp} EGP
                             </span>
-                          </span>
-                        </div>
+                          </div>
 
-                        {/* Meta: trip count + requested date/time */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 14,
-                            marginBottom: 12,
-                            fontSize: 12,
-                            color: "#9aa7b4",
-                          }}
-                        >
-                          <span
+                          {/* Meta: trip count + requested date/time */}
+                          <div
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 5,
+                              gap: 14,
+                              marginBottom: 12,
+                              fontSize: 12,
+                              color: "#9aa7b4",
                             }}
                           >
-                            <Car size={12} aria-hidden="true" />
-                            {booking.trips.length} trip
-                            {booking.trips.length === 1 ? "" : "s"}
-                          </span>
-                          <span
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            <CalendarClock size={12} aria-hidden="true" />
-                            {new Date(booking.createdAt).toLocaleString(
-                              "en-EG",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                              },
-                            )}
-                          </span>
-                        </div>
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 5,
+                              }}
+                            >
+                              <Car size={12} aria-hidden="true" />
+                              {booking.trips.length} trip
+                              {booking.trips.length === 1 ? "" : "s"}
+                            </span>
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 5,
+                              }}
+                            >
+                              <CalendarClock size={12} aria-hidden="true" />
+                              {new Date(booking.createdAt).toLocaleString(
+                                "en-EG",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                },
+                              )}
+                            </span>
+                          </div>
 
-                        {/* Route with connector */}
-                        {first && (
+                          {/* Pickup → Dropoff */}
                           <div
                             style={{
                               display: "flex",
@@ -498,6 +427,7 @@ export default async function MyTripsPage({
                               padding: "14px",
                               background: "#fafbfc",
                               borderRadius: 12,
+                              marginBottom: 12,
                             }}
                           >
                             <div
@@ -543,7 +473,7 @@ export default async function MyTripsPage({
                                   fontWeight: 500,
                                 }}
                               >
-                                {truncate(first.pickupAddress)}
+                                {truncate(trip.pickupAddress)}
                               </p>
                               <p
                                 style={{
@@ -553,24 +483,16 @@ export default async function MyTripsPage({
                                   fontWeight: 500,
                                 }}
                               >
-                                {truncate(first.dropoffAddress)}
+                                {truncate(trip.dropoffAddress)}
                               </p>
                             </div>
                           </div>
-                        )}
 
-                        {/* Times */}
-                        {first && (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              marginTop: 12,
-                            }}
-                          >
+                          {/* Times */}
+                          <div style={{ display: "flex", gap: 8 }}>
                             {[
-                              ["Pickup", to12h(first.pickupTime)],
-                              ["Arrive", to12h(first.arrivalTime)],
+                              ["Pickup", to12h(trip.pickupTime)],
+                              ["Arrive", to12h(trip.arrivalTime)],
                             ].map(([lbl, val]) => (
                               <div
                                 key={lbl}
@@ -607,41 +529,48 @@ export default async function MyTripsPage({
                               </div>
                             ))}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      );
+                    })}
 
-                      {/* Footer */}
-                      <div
+                    {/* Footer — trip count + view all */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 18px",
+                        borderTop: "1px solid #eef6f5",
+                        background: "#F5FBFA",
+                      }}
+                    >
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "flex-end",
-                          gap: 4,
-                          padding: "12px 18px",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#00806E",
-                          background: "#F5FBFA",
-                          borderTop: "1px solid #eef6f5",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#5A6A7A",
                         }}
                       >
-                        View details
-                        <ChevronRight size={15} aria-hidden="true" />
-                      </div>
-                    </Link>
-
-                    {needsPayment && (
-                      <div style={{ padding: "0 18px 16px" }}>
-                        <ContinueCheckoutButton
-                          bookingId={booking.id}
-                          amountEgp={booking.amountEgp}
-                          walletBalance={walletBalance}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                        {booking.trips.length} trip
+                        {booking.trips.length === 1 ? "" : "s"}
+                      </span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#00806E",
+                        }}
+                      >
+                        View all details
+                        <ChevronRight size={13} aria-hidden="true" />
+                      </span>
+                    </div>
+                  </Link>
+                </div>
+              ))}
             </section>
           ))
         )}

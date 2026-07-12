@@ -1,4 +1,10 @@
 import mongoose from "mongoose";
+import dns from "dns";
+
+// Force a reliable public DNS resolver — Node's default resolver can
+// intermittently fail SRV lookups (ECONNREFUSED) for mongodb+srv:// URIs
+// on some networks/adapters, especially on Windows.
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 const MONGODB_URI = process.env.MONGODB_URI!;
 const DB_NAME = process.env.DB_NAME;

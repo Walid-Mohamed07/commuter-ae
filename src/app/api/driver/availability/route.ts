@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
 import { Availability } from "@/models/Availability";
+import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
 
 interface Point {
@@ -41,6 +42,16 @@ export async function POST(req: NextRequest) {
   if (!session || session.role !== "driver")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  await connectDB();
+  const driver = await Driver.findOne({ userId: session.userId })
+    .select("verificationStatus")
+    .lean<{ verificationStatus?: string }>();
+  if (driver?.verificationStatus !== "verified")
+    return NextResponse.json(
+      { error: "Your profile must be verified before adding availability." },
+      { status: 403 },
+    );
+
   try {
     const { dates, startLocation, endLocation, startTime, endTime } =
       await req.json();
@@ -74,8 +85,6 @@ export async function POST(req: NextRequest) {
         { error: "End time must be after start time." },
         { status: 400 },
       );
-
-    await connectDB();
 
     const docs = dates.map((date: string) => ({
       driverId: session.userId,
