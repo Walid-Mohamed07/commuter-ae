@@ -91,17 +91,10 @@ export default function CreateClient({ userEmail }: Props) {
 
   // Load wallet balance, saved addresses, and transit stations
   useEffect(() => {
-    fetch("/geo/Points.geojson")
-      .then((r) => r.json())
-      .then((fc) => {
-        const s: Station[] = (fc.features as any[]).map((f) => ({
-          id: f.id as number,
-          name: (f.properties.Name as string) ?? "",
-          lat: f.geometry.coordinates[1] as number,
-          lng: f.geometry.coordinates[0] as number,
-          popupInfo: (f.properties.PopupInfo as string) ?? "",
-        }));
-        setStations(s);
+    fetch("/api/stations", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.stations) setStations(d.stations as Station[]);
       })
       .catch(() => {});
   }, []);
@@ -900,6 +893,7 @@ export default function CreateClient({ userEmail }: Props) {
                           fontSize: 12,
                           color: "#0B1E3D",
                           fontWeight: 600,
+                          listStyle: "inside",
                         }}
                       >
                         Be punctual — driver will not wait beyond the allowed
@@ -910,6 +904,7 @@ export default function CreateClient({ userEmail }: Props) {
                           fontSize: 12,
                           color: "#e74c3c",
                           fontWeight: 600,
+                          listStyle: "inside",
                         }}
                       >
                         Only declared passengers may board (except for infants).
@@ -924,6 +919,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#e74c3c",
                               fontWeight: 700,
+                              listStyle: "inside",
                             }}
                           >
                             No extra baggage allowed
@@ -933,6 +929,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#e74c3c",
                               fontWeight: 700,
+                              listStyle: "inside",
                             }}
                           >
                             No waiting time for Van / Microbus — be at the
@@ -947,6 +944,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#e74c3c",
                               fontWeight: 600,
+                              listStyle: "inside",
                             }}
                           >
                             No extra baggage allowed
@@ -956,6 +954,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#0B1E3D",
                               fontWeight: 600,
+                              listStyle: "inside",
                             }}
                           >
                             Shared Taxi: maximum waiting time is{" "}
@@ -971,6 +970,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#0B1E3D",
                               fontWeight: 600,
+                              listStyle: "inside",
                             }}
                           >
                             Maximum waiting time: <strong>5 minutes</strong>.
@@ -980,6 +980,7 @@ export default function CreateClient({ userEmail }: Props) {
                               fontSize: 12,
                               color: "#0B1E3D",
                               fontWeight: 600,
+                              listStyle: "inside",
                             }}
                           >
                             Maximum baggage: <strong>2 pieces</strong>.
