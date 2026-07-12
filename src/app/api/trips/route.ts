@@ -11,6 +11,7 @@ import {
 import { computePickupTime } from "@/lib/time/pickupWindow";
 import { isDateInWindow, isValidStartDate } from "@/lib/time/bookingDates";
 import { getVehicles } from "@/lib/db/getVehicles";
+import { fetchDirections } from "@/app/api/directions/route";
 import { Types } from "mongoose";
 import { randomUUID } from "crypto";
 
@@ -35,29 +36,17 @@ interface TripInput {
   walkingMinFromStation?: number;
 }
 
-/** Fetch total distance/duration for an origin→...waypoints...→dest route via the directions proxy. */
+/** Fetch total distance/duration for an origin→...waypoints...→dest route directly from Google (no internal HTTP hop). */
 async function fetchServerRoute(
-  appUrl: string,
   points: { lat: number; lng: number }[],
 ): Promise<{ distanceKm: number; durationMinutes: number } | null> {
   const origin = `${points[0].lat},${points[0].lng}`;
   const dest = `${points[points.length - 1].lat},${points[points.length - 1].lng}`;
   const mid = points.slice(1, -1);
-  const url = new URL(`${appUrl}/api/directions`);
-  url.searchParams.set("origin", origin);
-  url.searchParams.set("dest", dest);
-  if (mid.length) {
-    url.searchParams.set(
-      "waypoints",
-      mid.map((p) => `${p.lat},${p.lng}`).join("|"),
-    );
-  }
-  const res = await fetch(url.toString());
-  if (!res.ok) return null;
-  const data = (await res.json()) as Array<{
-    distance_km: number;
-    duration_minutes: number;
-  }>;
+  const waypoints = mid.length
+    ? mid.map((p) => `${p.lat},${p.lng}`).join("|")
+    : undefined;
+  const data = await fetchDirections(origin, dest, waypoints);
   if (!data.length) return null;
   return {
     distanceKm: data[0].distance_km,
@@ -71,7 +60,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { date?: string; dates?: string[]; startDate?: string; trips: TripInput[] };
+  let body: {
+    date?: string;
+    dates?: string[];
+    startDate?: string;
+    trips: TripInput[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -87,7 +81,11 @@ export async function POST(req: NextRequest) {
   }
   const dates = Array.from(new Set(rawDates)).slice(0, 7);
   const startDate = body.startDate ?? dates[0];
-  if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !isValidStartDate(startDate)) {
+  if (
+    !startDate ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+    !isValidStartDate(startDate)
+  ) {
     return NextResponse.json({ error: "Invalid start date" }, { status: 400 });
   }
   for (const d of dates) {
@@ -183,21 +181,14 @@ export async function POST(req: NextRequest) {
         );
 
     if (distinctPassengers.length > 0) {
-      const appUrl = process.env.APP_URL;
-      if (!appUrl) {
-        return NextResponse.json(
-          { error: "APP_URL is not configured on the server." },
-          { status: 500 },
-        );
-      }
-      const base = await fetchServerRoute(appUrl, [t.pickup, t.dropoff]);
+      const base = await fetchServerRoute([t.pickup, t.dropoff]);
       const waypoints = [
         t.pickup,
         ...distinctPassengers.map((p) => p.pickup!),
         ...distinctPassengers.map((p) => p.dropoff!),
         t.dropoff,
       ];
-      const combined = await fetchServerRoute(appUrl, waypoints);
+      const combined = await fetchServerRoute(waypoints);
       if (!base || !combined) {
         return NextResponse.json(
           { error: "Failed to compute passenger detour route." },
