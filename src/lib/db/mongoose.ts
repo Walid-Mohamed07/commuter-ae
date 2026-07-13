@@ -29,10 +29,17 @@ global._mongooseCache = cache;
 export async function connectDB(): Promise<typeof mongoose> {
   if (cache.conn) return cache.conn;
   if (!cache.promise) {
-    cache.promise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-      dbName: DB_NAME,
-    });
+    cache.promise = mongoose
+      .connect(MONGODB_URI, {
+        bufferCommands: false,
+        dbName: DB_NAME,
+      })
+      .catch((err) => {
+        // Clear cache so the next request retries instead of reusing a rejected promise
+        cache.promise = null;
+        cache.conn = null;
+        throw err;
+      });
   }
   cache.conn = await cache.promise;
   return cache.conn;
