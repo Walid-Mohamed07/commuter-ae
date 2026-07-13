@@ -1,4 +1,8 @@
-import { VEHICLES, type VehicleKey } from "@/lib/config/vehicles";
+import {
+  VEHICLES,
+  type VehicleKey,
+  type VehicleConfig,
+} from "@/lib/config/vehicles";
 
 export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -14,7 +18,8 @@ export function computePickupTime(
   arrivalTime: string, // "HH:MM"
   durationMinutes: number,
   vehicle: VehicleKey,
+  vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
 ): string {
-  const { window } = VEHICLES[vehicle];
+  const { window } = vehiclesMap[vehicle];
   return toHHMM(toMinutes(arrivalTime) - durationMinutes - window);
 }

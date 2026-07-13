@@ -9,6 +9,15 @@ const PointSchema = new Schema(
   { _id: false },
 );
 
+const PassengerDetailSchema = new Schema(
+  {
+    sameAsMain: { type: Boolean, required: true, default: true },
+    pickup: { type: PointSchema, required: false },
+    dropoff: { type: PointSchema, required: false },
+  },
+  { _id: false },
+);
+
 const TripSchema = new Schema(
   {
     pickup: { type: PointSchema, required: true },
@@ -31,6 +40,7 @@ const TripSchema = new Schema(
     durationMinutes: { type: Number, required: true },
     priceEgp: { type: Number, required: true }, // server-recomputed
     extraPassengers: { type: Number, default: 0, min: 0, max: 9 },
+    passengers: { type: [PassengerDetailSchema], default: [] },
   },
   { _id: true },
 );
@@ -39,6 +49,7 @@ const BookingSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
     date: { type: String, required: true }, // "YYYY-MM-DD"
+    groupId: { type: String, index: true }, // shared across bookings created together (multi-date)
     trips: {
       type: [TripSchema],
       required: true,
@@ -54,7 +65,7 @@ const BookingSchema = new Schema(
       enum: ["pending", "paid", "failed", "refunded", "expired"],
     },
     kashierSessionId: { type: String },
-    kashierOrderId: { type: String }, // = booking _id sent as orderId
+    kashierOrderId: { type: String }, // = booking _id or groupId sent as orderId
     paidAt: { type: Date },
 
     // ── Ride lifecycle ──

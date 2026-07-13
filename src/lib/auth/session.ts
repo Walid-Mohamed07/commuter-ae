@@ -11,7 +11,7 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export type UserRole = "passenger" | "driver";
+export type UserRole = "passenger" | "driver" | "admin";
 
 export interface SessionPayload {
   userId: string;
