@@ -22,10 +22,10 @@ interface RawFeature {
 // coordinates:[lng,lat]}, properties:{OBJECTID,name,direction,landmark,station_type}}]}).
 // Fully REPLACES the station points collection with the uploaded data.
 export async function POST(req: NextRequest) {
-  // const session = await getSession();
-  // if (!session || session.role !== "admin") {
-  //   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  // }
+  const session = await getSession();
+  if (!session || session.role !== "passenger") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   let file: File | null = null;
   try {
