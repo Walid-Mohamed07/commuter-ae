@@ -12,7 +12,7 @@ export async function GET() {
 
   await connectDB();
   const user = await User.findById(session.userId)
-    .select("name email phone role")
+    .select("name email phone role profilePic")
     .lean();
   if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -35,16 +35,21 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, phone } = body;
+    const { name, phone, profilePic } = body;
     if (!name?.trim())
       return NextResponse.json({ error: "Name is required." }, { status: 400 });
 
     await connectDB();
-    const user = await User.findByIdAndUpdate(
-      session.userId,
-      { name: name.trim(), phone: phone?.trim() || undefined },
-      { new: true, select: "name email phone role" },
-    ).lean();
+    const update: Record<string, unknown> = {
+      name: name.trim(),
+      phone: phone?.trim() || undefined,
+    };
+    if (typeof profilePic === "string") update.profilePic = profilePic;
+
+    const user = await User.findByIdAndUpdate(session.userId, update, {
+      new: true,
+      select: "name email phone role profilePic",
+    }).lean();
 
     if (!user)
       return NextResponse.json({ error: "User not found." }, { status: 404 });

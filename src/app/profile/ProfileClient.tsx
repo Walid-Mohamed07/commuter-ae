@@ -1,8 +1,8 @@
 ﻿"use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Phone, Mail, Check, Loader2 } from "lucide-react";
+import { User, Phone, Mail, Check, Loader2, Camera } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import SavedAddressesSection from "@/components/shared/SavedAddressesSection";
 import type { SavedAddress } from "@/types/shared";
@@ -11,6 +11,7 @@ interface Props {
   initialName: string;
   email: string;
   initialPhone: string;
+  initialProfilePic?: string | null;
   initialSavedAddresses: SavedAddress[];
 }
 
@@ -18,14 +19,59 @@ export default function ProfileClient({
   initialName,
   email,
   initialPhone,
+  initialProfilePic,
   initialSavedAddresses,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [profilePic, setProfilePic] = useState(initialProfilePic ?? null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  async function handlePicChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) {
+        setError(uploadData.error ?? "Upload failed.");
+        return;
+      }
+      const saveRes = await fetch("/api/auth/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          profilePic: uploadData.path,
+        }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok) {
+        setError(saveData.error ?? "Failed to save.");
+        return;
+      }
+      setProfilePic(uploadData.path);
+      router.refresh();
+    } catch {
+      setError("Network error. Please retry.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -73,20 +119,73 @@ export default function ProfileClient({
             marginBottom: 28,
           }}
         >
-          <div
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: "none" }}
+            onChange={handlePicChange}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            aria-label="Change profile picture"
+            className="group"
             style={{
-              width: 56,
-              height: 56,
+              position: "relative",
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               background: "#00C2A8",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
+              overflow: "hidden",
+              border: "none",
+              padding: 0,
+              cursor: uploading ? "default" : "pointer",
             }}
           >
-            <User size={26} color="#fff" aria-hidden="true" />
-          </div>
+            {profilePic ? (
+              <img
+                src={profilePic}
+                alt="Profile"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <User size={48} color="#fff" aria-hidden="true" />
+            )}
+            <div
+              className="group-hover:opacity-100"
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(11,30,61,0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: uploading ? 1 : 0,
+                transition: "opacity 0.15s",
+              }}
+            >
+              {uploading ? (
+                <Loader2
+                  size={22}
+                  color="#fff"
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Camera size={22} color="#fff" aria-hidden="true" />
+              )}
+            </div>
+          </button>
           <div>
             <p
               style={{

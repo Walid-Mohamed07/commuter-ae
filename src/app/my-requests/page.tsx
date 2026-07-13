@@ -199,34 +199,36 @@ export default async function MyTripsPage({
   const hasFilters = Boolean(payment || statusFilter);
 
   // Serialise — strip ObjectId / Date to plain strings
-  const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
-    (b) => ({
-      id: String(b._id),
-      date: b.date as string,
-      amountEgp: b.amountEgp as number,
-      paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
-      status: (b.status as BookingStatus) ?? "pending_payment",
-      createdAt:
-        b.createdAt instanceof Date
-          ? b.createdAt.toISOString()
-          : String(b.createdAt),
-      trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => {
-        const p = t.pickup as { address: string; lat: number; lng: number };
-        const d = t.dropoff as { address: string; lat: number; lng: number };
-        return {
-          vehicleType: t.vehicleType as string,
-          pickupAddress: p.address,
-          dropoffAddress: d.address,
-          pickup: typeof p.lat === "number" ? { lat: p.lat, lng: p.lng } : null,
-          dropoff:
-            typeof d.lat === "number" ? { lat: d.lat, lng: d.lng } : null,
-          pickupTime: t.pickupTime as string,
-          arrivalTime: t.arrivalTime as string,
-          priceEgp: t.priceEgp as number,
-        };
+  const bookings: BookingRow[] = (raw as Record<string, unknown>[])
+    .map(
+      (b) => ({
+        id: String(b._id),
+        date: b.date as string,
+        amountEgp: b.amountEgp as number,
+        paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
+        status: (b.status as BookingStatus) ?? "pending_payment",
+        createdAt:
+          b.createdAt instanceof Date
+            ? b.createdAt.toISOString()
+            : String(b.createdAt),
+        trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => {
+          const p = t.pickup as { address: string; lat: number; lng: number };
+          const d = t.dropoff as { address: string; lat: number; lng: number };
+          return {
+            vehicleType: t.vehicleType as string,
+            pickupAddress: p.address,
+            dropoffAddress: d.address,
+            pickup: typeof p.lat === "number" ? { lat: p.lat, lng: p.lng } : null,
+            dropoff:
+              typeof d.lat === "number" ? { lat: d.lat, lng: d.lng } : null,
+            pickupTime: t.pickupTime as string,
+            arrivalTime: t.arrivalTime as string,
+            priceEgp: t.priceEgp as number,
+          };
+        }),
       }),
-    }),
-  );
+    )
+    .filter((b) => b.id && b.id !== "undefined");
 
   // Group by date (already sorted newest-first, so group order is preserved)
   const groups = new Map<string, BookingRow[]>();

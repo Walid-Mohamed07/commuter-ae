@@ -71,12 +71,13 @@ export default async function ProfilePage() {
   }
 
   const user = await User.findById(session.userId)
-    .select("name email phone savedAddresses")
+    .select("name email phone savedAddresses profilePic")
     .lean<{
       name: string;
       email: string;
       phone?: string;
       savedAddresses?: SavedAddress[];
+      profilePic?: string | null;
     }>();
 
   if (!user) redirect("/login");
@@ -86,6 +87,7 @@ export default async function ProfilePage() {
       initialName={user.name}
       email={user.email}
       initialPhone={user.phone ?? ""}
+      initialProfilePic={user.profilePic ?? null}
       initialSavedAddresses={JSON.parse(JSON.stringify(user.savedAddresses ?? []))}
     />
   );

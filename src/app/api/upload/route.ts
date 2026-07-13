@@ -23,7 +23,7 @@ const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
-  if (!session || session.role !== "driver")
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {

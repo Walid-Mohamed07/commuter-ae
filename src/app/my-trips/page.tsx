@@ -288,30 +288,32 @@ export default async function MyTripsPage({
   const total: number = result?.total?.[0]?.count ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const trips: TripRow[] = rawRows.map((r) => ({
-    bookingId: String(r.bookingId),
-    date: r.date as string,
-    paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
-    status: (r.status as BookingStatus) ?? "pending_payment",
-    vehicleType: r.vehicleType as string,
-    pickupAddress: (r.pickupAddress as string) ?? "—",
-    dropoffAddress: (r.dropoffAddress as string) ?? "—",
-    pickup:
-      typeof r.pickupLat === "number" && typeof r.pickupLng === "number"
-        ? { lat: r.pickupLat as number, lng: r.pickupLng as number }
-        : null,
-    dropoff:
-      typeof r.dropoffLat === "number" && typeof r.dropoffLng === "number"
-        ? { lat: r.dropoffLat as number, lng: r.dropoffLng as number }
-        : null,
-    pickupTime: r.pickupTime as string,
-    arrivalTime: r.arrivalTime as string,
-    priceEgp: r.priceEgp as number,
-    createdAt:
-      r.createdAt instanceof Date
-        ? r.createdAt.toISOString()
-        : String(r.createdAt),
-  }));
+  const trips: TripRow[] = rawRows
+    .map((r) => ({
+      bookingId: String(r.bookingId),
+      date: r.date as string,
+      paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
+      status: (r.status as BookingStatus) ?? "pending_payment",
+      vehicleType: r.vehicleType as string,
+      pickupAddress: (r.pickupAddress as string) ?? "—",
+      dropoffAddress: (r.dropoffAddress as string) ?? "—",
+      pickup:
+        typeof r.pickupLat === "number" && typeof r.pickupLng === "number"
+          ? { lat: r.pickupLat as number, lng: r.pickupLng as number }
+          : null,
+      dropoff:
+        typeof r.dropoffLat === "number" && typeof r.dropoffLng === "number"
+          ? { lat: r.dropoffLat as number, lng: r.dropoffLng as number }
+          : null,
+      pickupTime: r.pickupTime as string,
+      arrivalTime: r.arrivalTime as string,
+      priceEgp: r.priceEgp as number,
+      createdAt:
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : String(r.createdAt),
+    }))
+    .filter((t) => t.bookingId && t.bookingId !== "undefined");
 
   const hasFilters = Boolean(payment || vehicle || statusFilter);
 
