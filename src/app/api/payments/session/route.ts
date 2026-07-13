@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
 import { Types } from "mongoose";
 
 const KASHIER_URL =
@@ -14,36 +14,29 @@ export async function POST(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let groupId: string | undefined;
-  let bookingId: string | undefined;
+  let bookingId: string;
   try {
-    ({ groupId, bookingId } = await req.json());
+    ({ bookingId } = await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  if (!groupId && (!bookingId || !Types.ObjectId.isValid(bookingId)))
-    return NextResponse.json({ error: "Invalid groupId or bookingId" }, { status: 400 });
+  if (!bookingId || !Types.ObjectId.isValid(bookingId))
+    return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 });
 
   await connectDB();
 
-  const query = groupId
-    ? { groupId, userId: new Types.ObjectId(session.userId) }
-    : { _id: bookingId, userId: new Types.ObjectId(session.userId) };
-
-  const bookings = await Booking.find({
-    ...query,
+  const booking = await Request.findOne({
+    _id: bookingId,
+    userId: new Types.ObjectId(session.userId),
     paymentStatus: { $in: ["pending", "failed"] },
   });
 
-  if (!bookings.length)
+  if (!booking)
     return NextResponse.json(
-      { error: "Booking not found or already paid." },
+      { error: "Request not found or already paid." },
       { status: 404 },
     );
-
-  const orderId = groupId ?? String(bookings[0]._id);
-  const amountEgp = bookings.reduce((sum, b) => sum + b.amountEgp, 0);
 
   const appUrl = process.env.APP_URL;
   if (!appUrl) {
@@ -55,9 +48,9 @@ export async function POST(req: NextRequest) {
   const expireAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
   const body = {
-    merchantOrderId: orderId,
+    merchantOrderId: String(booking._id),
     merchantId: process.env.KASHIER_MERCHANT_ID!,
-    amount: String(amountEgp),
+    amount: String(booking.amountEgp),
     currency: "EGP",
     // order: String(booking._id),
     // mode: process.env.KASHIER_MODE ?? "test",
@@ -71,9 +64,7 @@ export async function POST(req: NextRequest) {
       email: session.email,
       reference: String(session.userId),
     },
-    merchantRedirect: groupId
-      ? `${appUrl}/checkout/callback?groupId=${groupId}`
-      : `${appUrl}/checkout/callback?bookingId=${orderId}`,
+    merchantRedirect: `${appUrl}/checkout/callback?bookingId=${bookingId}`,
     serverWebhook: `${appUrl}/api/payments/webhook`,
   };
 
@@ -105,13 +96,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await Booking.updateMany(
-    { _id: { $in: bookings.map((b) => b._id) } },
-    {
-      kashierSessionId: kashierData._id ?? "",
-      kashierOrderId: orderId,
-    },
-  );
+  await Request.findByIdAndUpdate(bookingId, {
+    kashierSessionId: kashierData._id ?? "",
+    kashierOrderId: String(booking._id),
+  });
 
   return NextResponse.json({ sessionUrl: kashierData.sessionUrl });
 }

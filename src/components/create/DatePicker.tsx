@@ -1,23 +1,15 @@
 "use client";
 import { Calendar, Check } from "lucide-react";
 import { format } from "date-fns";
-import { bookingWindow, earliestBookingDate } from "@/lib/time/bookingDates";
+import { bookingWindow } from "@/lib/time/bookingDates";
 
 interface Props {
-  startDate: string; // "YYYY-MM-DD" — anchor day chosen by the user
-  onStartDateChange: (date: string) => void;
-  value: string[]; // selected "YYYY-MM-DD" dates (subset of the 7-day window from startDate)
+  value: string[]; // selected "YYYY-MM-DD" dates
   onChange: (dates: string[]) => void;
 }
 
-export default function DatePicker({
-  startDate,
-  onStartDateChange,
-  value,
-  onChange,
-}: Props) {
-  const earliest = earliestBookingDate();
-  const days = bookingWindow(startDate);
+export default function DatePicker({ value, onChange }: Props) {
+  const days = bookingWindow();
 
   function toggle(day: string) {
     if (value.includes(day)) {
@@ -29,40 +21,6 @@ export default function DatePicker({
 
   return (
     <div>
-      <p
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#0B1E3D",
-          margin: "0 0 10px",
-        }}
-      >
-        Start date
-      </p>
-      <input
-        type="date"
-        value={startDate}
-        min={earliest}
-        onChange={(e) => {
-          const next = e.target.value;
-          if (!next) return;
-          onStartDateChange(next);
-          onChange([next]);
-        }}
-        style={{
-          width: "100%",
-          height: 44,
-          padding: "0 12px",
-          borderRadius: 10,
-          border: "1.5px solid #c8e8e4",
-          background: "#eff7f6",
-          fontSize: 14,
-          fontFamily: "inherit",
-          color: "#0B1E3D",
-          marginBottom: 14,
-        }}
-      />
-
       <p
         style={{
           fontSize: 13,

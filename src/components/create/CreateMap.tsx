@@ -52,6 +52,15 @@ const DEST_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
   </svg>`,
 )}`;
 
+function stopIcon(index: number): string {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="36">
+      <path d="M15 1C7.27 1 1 7.27 1 15c0 10.25 14 20 14 20s14-9.75 14-20C29 7.27 22.73 1 15 1z" fill="#F5A623" stroke="#0B1E3D" stroke-width="1.5"/>
+      <text x="15" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#0B1E3D">${index + 1}</text>
+    </svg>`,
+  )}`;
+}
+
 interface Props {
   trips: TripData[];
   picking?: { tripId: string; field: "pickup" | "dropoff" } | null;
@@ -133,6 +142,11 @@ export default function CreateMap({
   // Collect all route points across all trips
   const allPoints: { lat: number; lng: number }[] = [];
   for (const t of trips) {
+    t.stops.forEach((stop) => {
+      if (stop.point) {
+        allPoints.push({ lat: stop.point.lat, lng: stop.point.lng });
+      }
+    });
     if (t.routeCoordinates?.length) {
       t.routeCoordinates.forEach(([lat, lng]) => allPoints.push({ lat, lng }));
       // For shared trips the route is station→station; include actual pickup/dropoff in bounds too
@@ -407,6 +421,24 @@ export default function CreateMap({
                     clickable={false}
                     zIndex={8 + i}
                   />
+                )}
+
+              {!isSharedVehicle(t.vehicleType) &&
+                t.stops.map(
+                  (stop, stopIndex) =>
+                    stop.point && (
+                      <Marker
+                        key={`stop-${t.id}-${stop.id}`}
+                        position={{ lat: stop.point.lat, lng: stop.point.lng }}
+                        icon={{
+                          url: stopIcon(stopIndex),
+                          scaledSize: new google.maps.Size(30, 36),
+                          anchor: new google.maps.Point(15, 36),
+                        }}
+                        title={`Trip ${i + 1}, stop ${stopIndex + 1}: ${stop.point.address}`}
+                        zIndex={11 + i + stopIndex}
+                      />
+                    ),
                 )}
 
               {/* Origin marker */}

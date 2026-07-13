@@ -4,7 +4,7 @@ import { Types } from "mongoose";
 import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Trip } from "@/models/Trip";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
@@ -40,15 +40,6 @@ function prettyDate(date: string): string {
 }
 
 type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -59,20 +50,6 @@ const PAY_PILL: Record<
   failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
   refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
   expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
-};
-
-const STATUS_PILL: Record<
-  BookingStatus,
-  { label: string; bg: string; color: string }
-> = {
-  pending_payment: { label: "Pending payment", bg: "#FFF3E0", color: "#E65100" },
-  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
-  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
-  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
-  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
-  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
-  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -146,7 +123,7 @@ interface LatLng {
 }
 
 interface TripRow {
-  bookingId: string;
+  id: string;
   date: string;
   paymentStatus: PaymentStatus;
   status: BookingStatus;
@@ -223,97 +200,58 @@ export default async function MyTripsPage({
 
   await connectDB();
 
-  // Lazy-expire bookings older than 2 h that are still pending_payment
-  await Booking.updateMany(
-    {
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
-  const bookingMatch: Record<string, unknown> = {
+  const tripMatch: Record<string, unknown> = {
     userId: new Types.ObjectId(session.userId),
   };
-  if (payment && payment in PAY_PILL) bookingMatch.paymentStatus = payment;
-  if (statusFilter && statusFilter in STATUS_PILL)
-    bookingMatch.status = statusFilter;
+  if (payment && payment in PAY_PILL) tripMatch.paymentStatus = payment;
+  if (vehicle && vehicle in VEHICLES) tripMatch.vehicleType = vehicle;
 
-  const tripMatchStage =
-    vehicle && vehicle in VEHICLES
-      ? [{ $match: { "trips.vehicleType": vehicle } }]
-      : [];
-
-  const [result] = await Booking.aggregate([
-    { $match: bookingMatch },
-    { $unwind: { path: "$trips", includeArrayIndex: "tripIndex" } },
-    ...tripMatchStage,
-    { $sort: { createdAt: -1, tripIndex: 1 } },
-    {
-      $facet: {
-        data: [
-          { $skip: (page - 1) * PAGE_SIZE },
-          { $limit: PAGE_SIZE },
-          {
-            $project: {
-              _id: 0,
-              bookingId: "$_id",
-              date: 1,
-              paymentStatus: 1,
-              status: 1,
-              createdAt: 1,
-              vehicleType: "$trips.vehicleType",
-              pickupAddress: "$trips.pickup.address",
-              dropoffAddress: "$trips.dropoff.address",
-              pickupLat: "$trips.pickup.lat",
-              pickupLng: "$trips.pickup.lng",
-              dropoffLat: "$trips.dropoff.lat",
-              dropoffLng: "$trips.dropoff.lng",
-              pickupTime: "$trips.pickupTime",
-              arrivalTime: "$trips.arrivalTime",
-              priceEgp: "$trips.priceEgp",
-            },
-          },
-        ],
-        total: [{ $count: "count" }],
-      },
-    },
+  const [total, rawTrips] = await Promise.all([
+    Trip.countDocuments(tripMatch),
+    Trip.find(tripMatch)
+      .sort({ date: -1, cycleIndex: 1 })
+      .skip((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE)
+      .lean<
+        {
+          _id: unknown;
+          date: string;
+          paymentStatus: string;
+          vehicleType: string;
+          pickup: { address: string; lat: number; lng: number };
+          dropoff: { address: string; lat: number; lng: number };
+          pickupTime: string;
+          arrivalTime: string;
+          priceEgp: number;
+          createdAt: Date | string;
+        }[]
+      >(),
   ]);
-
-  const rawRows = (result?.data ?? []) as Record<string, unknown>[];
-  const total: number = result?.total?.[0]?.count ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const trips: TripRow[] = rawRows
-    .map((r) => ({
-      bookingId: String(r.bookingId),
-      date: r.date as string,
-      paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
-      status: (r.status as BookingStatus) ?? "pending_payment",
-      vehicleType: r.vehicleType as string,
-      pickupAddress: (r.pickupAddress as string) ?? "—",
-      dropoffAddress: (r.dropoffAddress as string) ?? "—",
-      pickup:
-        typeof r.pickupLat === "number" && typeof r.pickupLng === "number"
-          ? { lat: r.pickupLat as number, lng: r.pickupLng as number }
-          : null,
-      dropoff:
-        typeof r.dropoffLat === "number" && typeof r.dropoffLng === "number"
-          ? { lat: r.dropoffLat as number, lng: r.dropoffLng as number }
-          : null,
-      pickupTime: r.pickupTime as string,
-      arrivalTime: r.arrivalTime as string,
-      priceEgp: r.priceEgp as number,
-      createdAt:
-        r.createdAt instanceof Date
-          ? r.createdAt.toISOString()
-          : String(r.createdAt),
-    }))
-    .filter((t) => t.bookingId && t.bookingId !== "undefined");
+  const trips: TripRow[] = rawTrips.map((r) => ({
+    id: String(r._id),
+    date: r.date,
+    paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
+    vehicleType: r.vehicleType,
+    pickupAddress: r.pickup?.address ?? "—",
+    dropoffAddress: r.dropoff?.address ?? "—",
+    pickup:
+      typeof r.pickup?.lat === "number"
+        ? { lat: r.pickup.lat, lng: r.pickup.lng }
+        : null,
+    dropoff:
+      typeof r.dropoff?.lat === "number"
+        ? { lat: r.dropoff.lat, lng: r.dropoff.lng }
+        : null,
+    pickupTime: r.pickupTime,
+    arrivalTime: r.arrivalTime,
+    priceEgp: r.priceEgp,
+    createdAt:
+      r.createdAt instanceof Date
+        ? r.createdAt.toISOString()
+        : String(r.createdAt),
+  }));
 
   const hasFilters = Boolean(payment || vehicle || statusFilter);
 
@@ -354,7 +292,7 @@ export default async function MyTripsPage({
             description={
               hasFilters
                 ? "Try clearing the filters to see your full history."
-                : "Every trip from your bookings will be logged here."
+                : "Every trip from your requests will be logged here."
             }
             action={
               <Link
@@ -377,15 +315,15 @@ export default async function MyTripsPage({
         ) : (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {trips.map((trip, i) => {
+              {trips.map((trip) => {
                 const vLabel =
                   VEHICLES[trip.vehicleType as VehicleKey]?.label ??
                   trip.vehicleType;
                 const timedOut = trip.status === "time_out";
                 return (
                   <Link
-                    key={`${trip.bookingId}-${i}`}
-                    href={`/my-requests/${trip.bookingId}`}
+                    key={trip.id}
+                    href={`/my-trips/${trip.id}`}
                     style={{
                       background: "#fff",
                       borderRadius: 14,

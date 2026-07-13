@@ -23,3 +23,20 @@ export function computePickupTime(
   const { window } = vehiclesMap[vehicle];
   return toHHMM(toMinutes(arrivalTime) - durationMinutes - window);
 }
+
+/** Private arrival = pickup + drive + stop waits + fixed arrival buffer. */
+export function computeArrivalTime(
+  pickupTime: string,
+  driveMinutes: number,
+  waitingMinutes: number,
+  bufferMinutes = 10,
+): string {
+  console.log({ pickupTime, driveMinutes, waitingMinutes, bufferMinutes });
+
+  return toHHMM(
+    toMinutes(pickupTime) +
+      Math.max(0, driveMinutes) +
+      Math.max(0, waitingMinutes) +
+      Math.max(0, bufferMinutes),
+  );
+}
