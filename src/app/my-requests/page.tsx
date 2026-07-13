@@ -4,7 +4,8 @@ import { MapPin, Clock, Car } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import AppHeader from "@/components/layout/AppHeader";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
+import { Trip } from "@/models/Trip";
 import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
@@ -115,7 +116,7 @@ interface TripRow {
 
 interface BookingRow {
   id: string;
-  date: string;
+  dates: string[];
   trips: TripRow[];
   amountEgp: number;
   paymentStatus: PaymentStatus;
@@ -167,8 +168,19 @@ export default async function MyTripsPage({
 
   await connectDB();
 
-  // Lazy-expire bookings older than 2 h that are still pending_payment
-  await Booking.updateMany(
+  // Lazy-expire requests older than 2 h that are still pending_payment
+  const _expireFilter = {
+    userId: session.userId,
+    status: "pending_payment",
+    paymentStatus: { $in: ["pending", "failed"] },
+    $expr: {
+      $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
+    },
+  };
+  await Request.updateMany(_expireFilter, {
+    $set: { status: "time_out", paymentStatus: "expired" },
+  });
+  await Trip.updateMany(
     {
       userId: session.userId,
       status: "pending_payment",
@@ -187,10 +199,10 @@ export default async function MyTripsPage({
   if (payment && payment in PAY_PILL) query.paymentStatus = payment;
   if (statusFilter && statusFilter in STATUS_PILL) query.status = statusFilter;
 
-  const total = await Booking.countDocuments(query);
+  const total = await Request.countDocuments(query);
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const raw = await Booking.find(query)
+  const raw = await Request.find(query)
     .sort({ createdAt: -1 })
     .skip((page - 1) * PAGE_SIZE)
     .limit(PAGE_SIZE)
@@ -198,42 +210,65 @@ export default async function MyTripsPage({
 
   const hasFilters = Boolean(payment || statusFilter);
 
-  // Serialise — strip ObjectId / Date to plain strings
-  const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
-    (b) => ({
-      id: String(b._id),
-      date: b.date as string,
-      amountEgp: b.amountEgp as number,
-      paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
-      status: (b.status as BookingStatus) ?? "pending_payment",
-      createdAt:
-        b.createdAt instanceof Date
-          ? b.createdAt.toISOString()
-          : String(b.createdAt),
-      trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => {
-        const p = t.pickup as { address: string; lat: number; lng: number };
-        const d = t.dropoff as { address: string; lat: number; lng: number };
-        return {
-          vehicleType: t.vehicleType as string,
-          pickupAddress: p.address,
-          dropoffAddress: d.address,
-          pickup: typeof p.lat === "number" ? { lat: p.lat, lng: p.lng } : null,
-          dropoff:
-            typeof d.lat === "number" ? { lat: d.lat, lng: d.lng } : null,
-          pickupTime: t.pickupTime as string,
-          arrivalTime: t.arrivalTime as string,
-          priceEgp: t.priceEgp as number,
-        };
-      }),
-    }),
+  // Fetch cycle-template trips (first date only) for compact list cards.
+  const rawList = raw as Record<string, unknown>[];
+  const reqIds = rawList.map((b) => b._id);
+  const firstDateByReq = new Map<string, string>(
+    rawList.map((b) => [String(b._id), ((b.dates as string[]) ?? [])[0] ?? ""]),
   );
+  const tripDocs = await Trip.find({ requestId: { $in: reqIds } })
+    .sort({ date: 1, cycleIndex: 1 })
+    .lean<
+      {
+        requestId: unknown;
+        date: string;
+        cycleIndex: number;
+        vehicleType: string;
+        pickup: { address: string; lat: number; lng: number };
+        dropoff: { address: string; lat: number; lng: number };
+        pickupTime: string;
+        arrivalTime: string;
+        priceEgp: number;
+      }[]
+    >();
 
-  // Group by date (already sorted newest-first, so group order is preserved)
-  const groups = new Map<string, BookingRow[]>();
-  for (const b of bookings) {
-    if (!groups.has(b.date)) groups.set(b.date, []);
-    groups.get(b.date)!.push(b);
+  // Group by requestId; keep only first-date trips for compact list card.
+  const tripsByReq = new Map<string, TripRow[]>();
+  for (const t of tripDocs) {
+    const rid = String(t.requestId);
+    if (t.date !== firstDateByReq.get(rid)) continue;
+    if (!tripsByReq.has(rid)) tripsByReq.set(rid, []);
+    tripsByReq.get(rid)!.push({
+      vehicleType: t.vehicleType,
+      pickupAddress: t.pickup?.address ?? "—",
+      dropoffAddress: t.dropoff?.address ?? "—",
+      pickup:
+        typeof t.pickup?.lat === "number"
+          ? { lat: t.pickup.lat, lng: t.pickup.lng }
+          : null,
+      dropoff:
+        typeof t.dropoff?.lat === "number"
+          ? { lat: t.dropoff.lat, lng: t.dropoff.lng }
+          : null,
+      pickupTime: t.pickupTime,
+      arrivalTime: t.arrivalTime,
+      priceEgp: t.priceEgp,
+    });
   }
+
+  // Serialise — strip ObjectId / Date to plain strings
+  const bookings: BookingRow[] = rawList.map((b) => ({
+    id: String(b._id),
+    dates: (b.dates as string[]) ?? [],
+    amountEgp: b.amountEgp as number,
+    paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
+    status: (b.status as BookingStatus) ?? "pending_payment",
+    createdAt:
+      b.createdAt instanceof Date
+        ? b.createdAt.toISOString()
+        : String(b.createdAt),
+    trips: tripsByReq.get(String(b._id)) ?? [],
+  }));
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -257,9 +292,9 @@ export default async function MyTripsPage({
           <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
             {total === 0
               ? hasFilters
-                ? "No bookings match these filters."
-                : "No bookings yet."
-              : `${total} booking${total === 1 ? "" : "s"}`}
+                ? "No requests match these filters."
+                : "No requests yet."
+              : `${total} request${total === 1 ? "" : "s"}`}
           </p>
         </div>
 
@@ -271,7 +306,7 @@ export default async function MyTripsPage({
             title={hasFilters ? "Nothing here" : "No trips yet"}
             description={
               hasFilters
-                ? "Try clearing the filters to see all your bookings."
+                ? "Try clearing the filters to see all your requests."
                 : "Book your first commute ride and it will appear here."
             }
             action={
@@ -293,54 +328,24 @@ export default async function MyTripsPage({
             }
           />
         ) : (
-          Array.from(groups.entries()).map(([date, dayBookings]) => (
-            <section key={date} style={{ marginBottom: 28 }}>
-              {/* Date group header */}
+          bookings.map((booking) => {
+            const needsPayment =
+              booking.paymentStatus === "pending" ||
+              booking.paymentStatus === "failed";
+            const timedOut = booking.status === "time_out";
+            return (
               <div
+                key={booking.id}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
+                  background: "#fff",
+                  borderRadius: 14,
+                  border: "1px solid #eef0f3",
                   marginBottom: 12,
+                  overflow: "hidden",
+                  opacity: timedOut ? 0.55 : 1,
+                  transition: "opacity 0.2s",
                 }}
               >
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "#5A6A7A",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  {new Date(`${date}T12:00:00`).toLocaleDateString("en-EG", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-                <div style={{ flex: 1, height: 1, background: "#eef0f3" }} />
-              </div>
-
-              {/* Booking cards for this date */}
-              {dayBookings.map((booking) => {
-                const needsPayment =
-                  booking.paymentStatus === "pending" ||
-                  booking.paymentStatus === "failed";
-                const timedOut = booking.status === "time_out";
-                return (
-                <div
-                  key={booking.id}
-                  style={{
-                    background: "#fff",
-                    borderRadius: 14,
-                    border: "1px solid #eef0f3",
-                    marginBottom: 12,
-                    overflow: "hidden",
-                    opacity: timedOut ? 0.55 : 1,
-                    transition: "opacity 0.2s",
-                  }}
-                >
                 <Link
                   href={`/my-requests/${booking.id}`}
                   style={{
@@ -359,33 +364,65 @@ export default async function MyTripsPage({
                     style={{
                       padding: "14px 18px",
                       borderBottom: "1px solid #f4f6f8",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                      gap: 8,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Pill
-                        {...(PAY_PILL[booking.paymentStatus] ??
-                          PAY_PILL.pending)}
-                      />
-                      <Pill
-                        {...(STATUS_PILL[booking.status] ??
-                          STATUS_PILL.pending_payment)}
-                      />
-                    </div>
-                    <span
+                    <div
                       style={{
-                        fontWeight: 800,
-                        fontSize: 16,
-                        color: "#0B1E3D",
-                        fontVariantNumeric: "tabular-nums",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#5A6A7A",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
                       }}
                     >
-                      {booking.amountEgp} EGP
-                    </span>
+                      {booking.dates
+                        .map((d) =>
+                          new Date(`${d}T12:00:00`).toLocaleDateString(
+                            "en-EG",
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            },
+                          ),
+                        )
+                        .join(", ")}
+                      {booking.dates.length > 1 &&
+                        ` (× ${booking.dates.length} days)`}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                      >
+                        <Pill
+                          {...(PAY_PILL[booking.paymentStatus] ??
+                            PAY_PILL.pending)}
+                        />
+                        <Pill
+                          {...(STATUS_PILL[booking.status] ??
+                            STATUS_PILL.pending_payment)}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 16,
+                          color: "#0B1E3D",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {booking.amountEgp} EGP
+                      </span>
+                    </div>
                   </div>
 
                   {/* Trip rows */}
@@ -546,11 +583,9 @@ export default async function MyTripsPage({
                     walletBalance={walletBalance}
                   />
                 )}
-                </div>
-                );
-              })}
-            </section>
-          ))
+              </div>
+            );
+          })
         )}
 
         {bookings.length > 0 && (

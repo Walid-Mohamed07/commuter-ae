@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
+import { Trip } from "@/models/Trip";
 import { debitWallet, creditWallet } from "@/lib/wallet/wallet";
 import { Types } from "mongoose";
 
@@ -16,40 +17,35 @@ export async function POST(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let groupId: string | undefined;
-  let bookingId: string | undefined;
+  let bookingId: string;
   try {
-    ({ groupId, bookingId } = await req.json());
+    ({ bookingId } = await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  if (!groupId && (!bookingId || !Types.ObjectId.isValid(bookingId)))
-    return NextResponse.json({ error: "Invalid groupId or bookingId" }, { status: 400 });
+  if (!bookingId || !Types.ObjectId.isValid(bookingId))
+    return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 });
 
   await connectDB();
 
-  const query = groupId
-    ? { groupId, userId: new Types.ObjectId(session.userId) }
-    : { _id: bookingId, userId: new Types.ObjectId(session.userId) };
-
-  const bookings = await Booking.find({
-    ...query,
+  const booking = await Request.findOne({
+    _id: bookingId,
+    userId: new Types.ObjectId(session.userId),
     paymentStatus: { $in: ["pending", "failed"] },
   });
 
-  if (!bookings.length)
+  if (!booking)
     return NextResponse.json(
-      { error: "Booking not found or already paid." },
+      { error: "Request not found or already paid." },
       { status: 404 },
     );
 
-  const amount = bookings.reduce((sum, b) => sum + b.amountEgp, 0);
-  const refLabel = groupId ?? String(bookings[0]._id);
+  const amount = booking.amountEgp;
 
   const newBalance = await debitWallet(session.userId, amount, {
-    description: `Payment for booking(s) ${refLabel}`,
-    bookingId: refLabel,
+    description: `Payment for booking ${booking._id}`,
+    bookingId: String(booking._id),
   });
 
   if (newBalance === null) {
@@ -59,21 +55,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Settle all bookings — conditional so a racing card webhook can't double-pay.
-  const settleFilter = groupId
-    ? { groupId, paymentStatus: { $in: ["pending", "failed"] } }
-    : { _id: bookings[0]._id, paymentStatus: { $in: ["pending", "failed"] } };
+  // Settle the request — conditional so a racing card webhook can't double-pay.
+  const settled = await Request.findOneAndUpdate(
+    { _id: booking._id, paymentStatus: { $in: ["pending", "failed"] } },
+    {
+      paymentStatus: "paid",
+      status: "submitted",
+      paidAt: new Date(),
+    },
+  );
 
-  const settled = await Booking.updateMany(settleFilter, {
-    paymentStatus: "paid",
-    status: "submitted",
-    paidAt: new Date(),
-  });
-
-  // Lost the race (bookings already paid elsewhere) — refund the debit.
-  if (!settled.modifiedCount) {
+  // Lost the race (request already paid elsewhere) — refund the debit.
+  if (!settled) {
     await creditWallet(session.userId, amount, {
-      description: `Refund — booking(s) ${refLabel} already paid`,
+      description: `Refund — request ${booking._id} already paid`,
       type: "refund",
     });
     return NextResponse.json(
@@ -81,6 +76,12 @@ export async function POST(req: NextRequest) {
       { status: 409 },
     );
   }
+
+  // Sync all materialized Trips for this request.
+  await Trip.updateMany(
+    { requestId: booking._id },
+    { paymentStatus: "paid", status: "submitted" },
+  );
 
   return NextResponse.json({ paymentStatus: "paid", balanceEgp: newBalance });
 }

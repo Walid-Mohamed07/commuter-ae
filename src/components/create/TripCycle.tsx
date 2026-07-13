@@ -16,10 +16,16 @@ import {
   priceFor,
   maxExtraPassengers,
   finalPrice,
+  waitingCostEgp,
   type VehicleKey,
   type VehicleConfig,
 } from "@/lib/config/vehicles";
-import { computePickupTime, toHHMM, toMinutes } from "@/lib/time/pickupWindow";
+import {
+  computeArrivalTime,
+  computePickupTime,
+  toHHMM,
+  toMinutes,
+} from "@/lib/time/pickupWindow";
 import { fetchRoute } from "@/lib/openrouteservice";
 import type { TripPoint } from "@/lib/store/useTripStore";
 import type { SavedAddress } from "@/types/shared";
@@ -38,18 +44,34 @@ export interface PassengerDetail {
   dropoff: TripPoint | null;
 }
 
+export interface StopPoint {
+  id: string;
+  point: TripPoint | null;
+  alighting: number;
+  boarding: number;
+  waitingMinutes: number;
+}
+
+export interface RouteLeg {
+  distanceKm: number;
+  durationMinutes: number;
+}
+
 export interface TripData {
   id: string;
   pickup: TripPoint | null;
   dropoff: TripPoint | null;
-  vehicleType: VehicleKey;
+  vehicleType: VehicleKey | ""; // "" = not yet chosen ("Select type to continue")
   arrivalTime: string; // "HH:MM" 24h
   pickupTime: string; // computed
   distanceKm: number | null;
   durationMinutes: number | null;
   priceEgp: number | null;
   routeCoordinates: [number, number][] | null;
+  routeLegs: RouteLeg[];
   extraPassengers: number;
+  numberOfPassengers: number;
+  stops: StopPoint[];
   returnTrip?: boolean; // UI flag — reverse of source trip
   pickupStation: { lat: number; lng: number; name: string } | null;
   dropoffStation: { lat: number; lng: number; name: string } | null;
@@ -104,6 +126,16 @@ function to12h(hhmm: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function formatWaitDuration(minutes: number): string {
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+  return `${String(Math.floor(safeMinutes / 60)).padStart(2, "0")}:${String(safeMinutes % 60).padStart(2, "0")}`;
+}
+
+function parseWaitDuration(value: string): number | null {
+  const match = /^(\d{2,}):([0-5]\d)$/.exec(value);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
 // Helper — check if a point is already saved
 function isAlreadySaved(pt: TripPoint, saved: SavedAddress[]): boolean {
   return saved.some(
@@ -131,6 +163,139 @@ const readonlyStyle: React.CSSProperties = {
   border: "1.5px solid #e8edf0",
   cursor: "not-allowed",
 };
+
+const timeInputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 52,
+  padding: "0 14px",
+  borderRadius: 12,
+  border: "1.5px solid #e8edf0",
+  background: "#f8f9fa",
+  fontSize: 15,
+  fontFamily: "inherit",
+  color: "#0B1E3D",
+  boxSizing: "border-box",
+};
+
+const routeInfoStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "8px 12px",
+  background: "#eff7f6",
+  borderRadius: 8,
+  fontSize: 13,
+  color: "#0B1E3D",
+  fontWeight: 500,
+};
+
+const locationErrorStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: "#e74c3c",
+  background: "rgba(231,76,60,0.07)",
+  border: "1px solid rgba(231,76,60,0.2)",
+  borderRadius: 8,
+  padding: "8px 12px",
+  marginTop: 6,
+};
+
+function counterButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    border: "1.5px solid #e8edf0",
+    background: "#f8f9fa",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: 20,
+    color: "#0B1E3D",
+    fontFamily: "inherit",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+}
+
+function CounterField({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div>
+      <span style={{ fontSize: 12, fontWeight: 600, color: "#0B1E3D" }}>
+        {label}
+      </span>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}
+      >
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          disabled={value <= 0}
+          aria-label={`Decrease ${label.toLowerCase()}`}
+          style={counterButtonStyle(value <= 0)}
+        >
+          −
+        </button>
+        <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700 }}>
+          {value}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          aria-label={`Increase ${label.toLowerCase()}`}
+          style={counterButtonStyle(value >= max)}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WaitDurationInput({
+  id,
+  minutes,
+  onChange,
+}: {
+  id: string;
+  minutes: number;
+  onChange: (minutes: number) => void;
+}) {
+  const [value, setValue] = useState(() => formatWaitDuration(minutes));
+
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      pattern="\d{2,}:\d{2}"
+      placeholder="00:00"
+      value={value}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (!/^\d{0,}(:\d{0,2})?$/.test(nextValue)) return;
+        setValue(nextValue);
+        const nextMinutes = parseWaitDuration(nextValue);
+        if (nextMinutes !== null) onChange(nextMinutes);
+      }}
+      onBlur={() => {
+        const nextMinutes = parseWaitDuration(value);
+        if (nextMinutes === null) setValue(formatWaitDuration(minutes));
+      }}
+      required
+      style={timeInputStyle}
+    />
+  );
+}
 
 export default function TripCycle({
   data,
@@ -166,11 +331,14 @@ export default function TripCycle({
         durationMinutes: null,
         priceEgp: null,
         routeCoordinates: null,
+        routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
         walkingMinToStation: null,
         walkingMinFromStation: null,
         passengers: [],
+        numberOfPassengers: 1,
+        stops: [],
         baseDistanceKm: null,
         passengerDetourKm: null,
       });
@@ -186,11 +354,14 @@ export default function TripCycle({
         durationMinutes: null,
         priceEgp: null,
         routeCoordinates: null,
+        routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
         walkingMinToStation: null,
         walkingMinFromStation: null,
         passengers: [],
+        numberOfPassengers: 1,
+        stops: [],
         baseDistanceKm: null,
         passengerDetourKm: null,
       });
@@ -199,6 +370,7 @@ export default function TripCycle({
 
   /* ── Auto-fetch route when both pickup+dropoff filled ── */
   useEffect(() => {
+    if (!isSharedVehicle(data.vehicleType)) return;
     if (!data.pickup || !data.dropoff) {
       onChange({
         ...data,
@@ -207,6 +379,7 @@ export default function TripCycle({
         priceEgp: null,
         pickupTime: "",
         routeCoordinates: null,
+        routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
         walkingMinToStation: null,
@@ -217,7 +390,10 @@ export default function TripCycle({
       return;
     }
 
-    const shared = isSharedVehicle(data.vehicleType);
+    if (!data.vehicleType) return;
+    const vehicleType = data.vehicleType;
+
+    const shared = isSharedVehicle(vehicleType);
 
     // For shared vehicles snap pickup/dropoff to nearest station
     let routeFrom: TripPoint = data.pickup;
@@ -258,14 +434,14 @@ export default function TripCycle({
       .then((routes) => {
         if (cancelled || !routes.length) return;
         const { distance_km, duration_minutes, coordinates } = routes[0];
-        const price = priceFor(distance_km, data.vehicleType, vMap);
+        const price = priceFor(distance_km, vehicleType, vMap);
         // For shared: also subtract walk-from-station time from arrival before computing pickup
         const extraWalk = walkMinFromStation ?? 0;
         const pt = data.arrivalTime
           ? computePickupTime(
               data.arrivalTime,
               duration_minutes + extraWalk,
-              data.vehicleType,
+              vehicleType,
               vMap,
             )
           : "";
@@ -298,10 +474,117 @@ export default function TripCycle({
     stations.length,
   ]);
 
+  /* ── Private route: pickup → ordered stops → dropoff ── */
+  const privateStopsSignature = JSON.stringify(data.stops);
+  useEffect(() => {
+    if (!data.vehicleType || isSharedVehicle(data.vehicleType)) return;
+
+    const hasCompleteRoute =
+      data.pickup && data.dropoff && data.stops.every((stop) => stop.point);
+    if (!hasCompleteRoute) {
+      if (
+        data.distanceKm !== null ||
+        data.durationMinutes !== null ||
+        data.priceEgp !== null ||
+        data.arrivalTime ||
+        data.routeCoordinates !== null
+      ) {
+        onChange({
+          ...data,
+          distanceKm: null,
+          durationMinutes: null,
+          priceEgp: null,
+          arrivalTime: "",
+          routeCoordinates: null,
+          routeLegs: [],
+          pickupStation: null,
+          dropoffStation: null,
+          walkingMinToStation: null,
+          walkingMinFromStation: null,
+        });
+      }
+      return;
+    }
+
+    const vehicleType = data.vehicleType;
+    const totalWaitingMinutes = data.stops.reduce(
+      (total, stop) => total + stop.waitingMinutes,
+      0,
+    );
+    let cancelled = false;
+    const routePoints = [
+      data.pickup!,
+      ...data.stops.map((stop) => stop.point!),
+      data.dropoff!,
+    ];
+    Promise.all([
+      fetchRoute(routePoints),
+      ...routePoints
+        .slice(0, -1)
+        .map((point, pointIndex) =>
+          fetchRoute([point, routePoints[pointIndex + 1]]),
+        ),
+    ])
+      .then(([routes, ...legRoutes]) => {
+        if (cancelled || !routes.length) return;
+        const { distance_km, duration_minutes, coordinates } = routes[0];
+        const routeLegs = legRoutes.map((legRoute) => ({
+          distanceKm: legRoute[0]?.distance_km ?? 0,
+          durationMinutes: legRoute[0]?.duration_minutes ?? 0,
+        }));
+        const basePrice = priceFor(distance_km, vehicleType, vMap);
+        const price =
+          finalPrice(
+            basePrice,
+            Math.max(0, data.numberOfPassengers - 1),
+            vehicleType,
+          ) + waitingCostEgp(totalWaitingMinutes, vehicleType, vMap);
+        onChange({
+          ...data,
+          distanceKm: distance_km,
+          durationMinutes: duration_minutes,
+          priceEgp: price,
+          arrivalTime: data.pickupTime
+            ? computeArrivalTime(
+                data.pickupTime,
+                duration_minutes,
+                totalWaitingMinutes,
+                10,
+              )
+            : "",
+          routeCoordinates: coordinates,
+          routeLegs,
+          pickupStation: null,
+          dropoffStation: null,
+          walkingMinToStation: null,
+          walkingMinFromStation: null,
+          baseDistanceKm: distance_km,
+          passengerDetourKm: null,
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRouteLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    JSON.stringify(data.pickup),
+    JSON.stringify(data.dropoff),
+    privateStopsSignature,
+    data.vehicleType,
+    data.numberOfPassengers,
+    data.pickupTime,
+  ]);
+
   /* ── Passenger detour: combined route through distinct passenger points (private vehicles only) ── */
   useEffect(() => {
-    if (!data.pickup || !data.dropoff) return;
-    const isPrivate = !isSharedVehicle(data.vehicleType);
+    if (!data.pickup || !data.dropoff || !data.vehicleType) return;
+    const vehicleType = data.vehicleType;
+    const isPrivate = !isSharedVehicle(vehicleType);
     const distinct = isPrivate
       ? (data.passengers ?? []).filter(
           (p) => !p.sameAsMain && p.pickup && p.dropoff,
@@ -317,12 +600,12 @@ export default function TripCycle({
         .then((routes) => {
           if (cancelled || !routes.length) return;
           const { distance_km, duration_minutes, coordinates } = routes[0];
-          const price = priceFor(distance_km, data.vehicleType, vMap);
+          const price = priceFor(distance_km, vehicleType, vMap);
           const pt = data.arrivalTime
             ? computePickupTime(
                 data.arrivalTime,
                 duration_minutes,
-                data.vehicleType,
+                vehicleType,
                 vMap,
               )
             : data.pickupTime;
@@ -357,12 +640,12 @@ export default function TripCycle({
         const base = data.baseDistanceKm ?? distance_km;
         const withinLimit = distance_km <= base * 1.25;
         if (withinLimit) {
-          const price = priceFor(distance_km, data.vehicleType, vMap);
+          const price = priceFor(distance_km, vehicleType, vMap);
           const pt = data.arrivalTime
             ? computePickupTime(
                 data.arrivalTime,
                 duration_minutes,
-                data.vehicleType,
+                vehicleType,
                 vMap,
               )
             : data.pickupTime;
@@ -395,7 +678,8 @@ export default function TripCycle({
 
   /* ── Recompute pickup time when arrival, vehicle, or walking changes ── */
   useEffect(() => {
-    if (!data.arrivalTime || !data.durationMinutes) return;
+    if (!isSharedVehicle(data.vehicleType)) return;
+    if (!data.arrivalTime || !data.durationMinutes || !data.vehicleType) return;
     const extraWalk = isSharedVehicle(data.vehicleType)
       ? (data.walkingMinFromStation ?? 0)
       : 0;
@@ -416,7 +700,8 @@ export default function TripCycle({
 
   /* ── Recompute price when vehicle changes ── */
   useEffect(() => {
-    if (!data.distanceKm) return;
+    if (!isSharedVehicle(data.vehicleType)) return;
+    if (!data.distanceKm || !data.vehicleType) return;
     const price = priceFor(data.distanceKm, data.vehicleType, vMap);
     if (price !== data.priceEgp) onChange({ ...data, priceEgp: price });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -478,6 +763,22 @@ export default function TripCycle({
       ),
     });
   }
+
+  function updateStop(id: string, patch: Partial<StopPoint>) {
+    onChange({
+      ...data,
+      stops: data.stops.map((stop) =>
+        stop.id === id ? { ...stop, ...patch } : stop,
+      ),
+    });
+  }
+
+  const isPrivate = !!data.vehicleType && !isSharedVehicle(data.vehicleType);
+  const displayedPrice = isPrivate
+    ? data.priceEgp
+    : data.priceEgp == null
+      ? null
+      : finalPrice(data.priceEgp, data.extraPassengers ?? 0, data.vehicleType);
 
   return (
     <div
@@ -542,7 +843,7 @@ export default function TripCycle({
           </label>
         )}
 
-        {data.priceEgp && (
+        {displayedPrice != null && (
           <span
             className="price-pop"
             style={{
@@ -553,12 +854,7 @@ export default function TripCycle({
               marginLeft: "auto",
             }}
           >
-            {finalPrice(
-              data.priceEgp,
-              data.extraPassengers ?? 0,
-              data.vehicleType,
-            )}{" "}
-            EGP
+            {displayedPrice} EGP
           </span>
         )}
         {canRemove && (
@@ -615,7 +911,11 @@ export default function TripCycle({
             id={`vehicle-${data.id}`}
             value={data.vehicleType}
             onChange={(e) => {
-              const newVehicle = e.target.value as VehicleKey;
+              const newVehicle = e.target.value as VehicleKey | "";
+              if (!newVehicle) {
+                onChange({ ...data, vehicleType: "" });
+                return;
+              }
               const newMax = maxExtraPassengers(newVehicle);
               const clampedPassengers = Math.min(
                 data.extraPassengers ?? 0,
@@ -630,7 +930,8 @@ export default function TripCycle({
                   const existing = (data.passengers ?? [])[i];
                   if (!isPrivate) {
                     return {
-                      id: existing?.id ?? Math.random().toString(36).slice(2, 9),
+                      id:
+                        existing?.id ?? Math.random().toString(36).slice(2, 9),
                       sameAsMain: true,
                       pickup: null,
                       dropoff: null,
@@ -658,8 +959,15 @@ export default function TripCycle({
               onChange({
                 ...data,
                 vehicleType: newVehicle,
-                extraPassengers: clampedPassengers,
-                passengers: syncedPassengers,
+                extraPassengers: isPrivate ? 0 : clampedPassengers,
+                numberOfPassengers: isPrivate
+                  ? Math.min(
+                      Math.max(1, data.numberOfPassengers),
+                      vMap[newVehicle].occupancy,
+                    )
+                  : 1,
+                stops: isPrivate ? data.stops : [],
+                passengers: isPrivate ? [] : syncedPassengers,
                 pickupTime: newPickupTime,
               });
             }}
@@ -692,6 +1000,9 @@ export default function TripCycle({
               e.currentTarget.style.boxShadow = "none";
             }}
           >
+            <option value="" disabled>
+              Select type to continue
+            </option>
             {vList.map((v) => (
               <option key={v.key} value={v.key}>
                 {v.label}
@@ -700,586 +1011,946 @@ export default function TripCycle({
           </select>
         </div>
 
-        {/* Pickup */}
-        <div>
-          <label style={labelStyle}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Navigation
-                size={13}
-                style={{ color: "#0B1E3D" }}
-                aria-hidden="true"
-              />
-              Pickup location{" "}
-              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-                *
-              </span>
-            </span>
-          </label>
-          <AddressInput
-            id={`pickup-${data.id}`}
-            placeholder="Enter pickup address"
-            value={data.pickup}
-            onChange={(p) => set("pickup", p)}
-            iconColor="#0B1E3D"
-            savedAddresses={savedAddresses}
-          />
-          {data.pickup && !isAlreadySaved(data.pickup, savedAddresses) && (
-            <SaveAddressButton
-              point={data.pickup}
-              onSaved={(s) => onAddressSaved?.(s)}
-            />
-          )}
-          {onPickFromMap && (
-            <button
-              type="button"
-              onClick={() => onPickFromMap("pickup")}
-              style={pickBtnStyle(picking === "pickup")}
-            >
-              <MapPin size={13} aria-hidden="true" />
-              {picking === "pickup" ? "Click the map…" : "Pick from map"}
-            </button>
-          )}
-          {isSharedVehicle(data.vehicleType) &&
-            data.pickup &&
-            data.pickupStation && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: "#7A5000",
-                  background: "rgba(245,166,35,0.1)",
-                  border: "1px solid rgba(245,166,35,0.35)",
-                  borderRadius: 8,
-                  padding: "5px 10px",
-                }}
-              >
-                <span aria-hidden="true">↪</span>
-                <span>
-                  Station: <strong>{data.pickupStation.name}</strong>
-                  {data.walkingMinToStation != null
-                    ? ` (~${data.walkingMinToStation} min walk)`
-                    : ""}
+        {/* Everything below is exclusive to shared rides for now — private ride
+            form structure lands in a follow-up phase. */}
+        {isSharedVehicle(data.vehicleType) && (
+          <>
+            {/* Pickup */}
+            <div>
+              <label style={labelStyle}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Navigation
+                    size={13}
+                    style={{ color: "#0B1E3D" }}
+                    aria-hidden="true"
+                  />
+                  Pickup location{" "}
+                  <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                    *
+                  </span>
                 </span>
-              </div>
-            )}
-        </div>
-
-        {/* Dropoff */}
-        <div>
-          <label style={labelStyle}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <MapPin
-                size={13}
-                style={{ color: "#00C2A8" }}
-                aria-hidden="true"
+              </label>
+              <AddressInput
+                id={`pickup-${data.id}`}
+                placeholder="Enter pickup address"
+                value={data.pickup}
+                onChange={(p) => set("pickup", p)}
+                iconColor="#0B1E3D"
+                savedAddresses={savedAddresses}
               />
-              Dropoff location{" "}
-              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-                *
-              </span>
-            </span>
-          </label>
-          <AddressInput
-            id={`dropoff-${data.id}`}
-            placeholder="Enter dropoff address"
-            value={data.dropoff}
-            onChange={(p) => set("dropoff", p)}
-            iconColor="#00C2A8"
-            savedAddresses={savedAddresses}
-          />
-          {data.dropoff && !isAlreadySaved(data.dropoff, savedAddresses) && (
-            <SaveAddressButton
-              point={data.dropoff}
-              onSaved={(s) => onAddressSaved?.(s)}
-            />
-          )}
-          {onPickFromMap && (
-            <button
-              type="button"
-              onClick={() => onPickFromMap("dropoff")}
-              style={pickBtnStyle(picking === "dropoff")}
-            >
-              <MapPin size={13} aria-hidden="true" />
-              {picking === "dropoff" ? "Click the map…" : "Pick from map"}
-            </button>
-          )}
-          {isSharedVehicle(data.vehicleType) &&
-            data.dropoff &&
-            data.dropoffStation && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: "#7A5000",
-                  background: "rgba(245,166,35,0.1)",
-                  border: "1px solid rgba(245,166,35,0.35)",
-                  borderRadius: 8,
-                  padding: "5px 10px",
-                }}
-              >
-                <span aria-hidden="true">↪</span>
-                <span>
-                  Station: <strong>{data.dropoffStation.name}</strong>
-                  {data.walkingMinFromStation != null
-                    ? ` (~${data.walkingMinFromStation} min walk)`
-                    : ""}
+              {data.pickup && !isAlreadySaved(data.pickup, savedAddresses) && (
+                <SaveAddressButton
+                  point={data.pickup}
+                  onSaved={(s) => onAddressSaved?.(s)}
+                />
+              )}
+              {onPickFromMap && (
+                <button
+                  type="button"
+                  onClick={() => onPickFromMap("pickup")}
+                  style={pickBtnStyle(picking === "pickup")}
+                >
+                  <MapPin size={13} aria-hidden="true" />
+                  {picking === "pickup" ? "Click the map…" : "Pick from map"}
+                </button>
+              )}
+              {isSharedVehicle(data.vehicleType) &&
+                data.pickup &&
+                data.pickupStation && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: "#7A5000",
+                      background: "rgba(245,166,35,0.1)",
+                      border: "1px solid rgba(245,166,35,0.35)",
+                      borderRadius: 8,
+                      padding: "5px 10px",
+                    }}
+                  >
+                    <span aria-hidden="true">↪</span>
+                    <span>
+                      Station: <strong>{data.pickupStation.name}</strong>
+                      {data.walkingMinToStation != null
+                        ? ` (~${data.walkingMinToStation} min walk)`
+                        : ""}
+                    </span>
+                  </div>
+                )}
+            </div>
+
+            {/* Dropoff */}
+            <div>
+              <label style={labelStyle}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <MapPin
+                    size={13}
+                    style={{ color: "#00C2A8" }}
+                    aria-hidden="true"
+                  />
+                  Dropoff location{" "}
+                  <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                    *
+                  </span>
                 </span>
-              </div>
-            )}
-          {locationError && (
-            <div
-              role="alert"
-              style={{
-                fontSize: 13,
-                color: "#e74c3c",
-                background: "rgba(231,76,60,0.07)",
-                border: "1px solid rgba(231,76,60,0.2)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                marginTop: 6,
-              }}
-            >
-              ⚠ {locationError}
-            </div>
-          )}
-        </div>
-
-        {/* Route info pill */}
-        {routeLoading && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              color: "#5A6A7A",
-            }}
-          >
-            <Loader2 size={14} className="spin" aria-hidden="true" />
-            Calculating route…
-          </div>
-        )}
-        {!routeLoading && data.distanceKm && data.durationMinutes && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "8px 12px",
-              background: "#eff7f6",
-              borderRadius: 8,
-              fontSize: 13,
-              color: "#0B1E3D",
-              fontWeight: 500,
-            }}
-          >
-            <Info
-              size={14}
-              style={{ color: "#00C2A8", flexShrink: 0 }}
-              aria-hidden="true"
-            />
-            <span>
-              <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-                {data.distanceKm} km
-              </strong>
-              {" · "}
-              <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-                {data.durationMinutes} min
-              </strong>
-              {" drive"}
-            </span>
-          </div>
-        )}
-
-        {/* Arrival time */}
-        <div>
-          <label htmlFor={`arrival-${data.id}`} style={labelStyle}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Clock
-                size={13}
-                style={{ color: "#F5A623" }}
-                aria-hidden="true"
+              </label>
+              <AddressInput
+                id={`dropoff-${data.id}`}
+                placeholder="Enter dropoff address"
+                value={data.dropoff}
+                onChange={(p) => set("dropoff", p)}
+                iconColor="#00C2A8"
+                savedAddresses={savedAddresses}
               />
-              Arrival time{" "}
-              <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-                *
-              </span>
-            </span>
-          </label>
-          <input
-            id={`arrival-${data.id}`}
-            type="time"
-            value={data.arrivalTime}
-            min={minArrivalTime ?? undefined}
-            onChange={(e) => set("arrivalTime", e.target.value)}
-            required
-            style={{
-              width: "100%",
-              height: 52,
-              padding: "0 14px",
-              borderRadius: 12,
-              border: `1.5px solid ${arrivalTooEarly ? "#e74c3c" : "#e8edf0"}`,
-              background: "#f8f9fa",
-              fontSize: 15,
-              fontFamily: "inherit",
-              color: "#0B1E3D",
-              boxSizing: "border-box",
-              outline: "none",
-              transition: "border-color 0.15s",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = arrivalTooEarly
-                ? "#e74c3c"
-                : "#00C2A8";
-              e.currentTarget.style.boxShadow = arrivalTooEarly
-                ? "0 0 0 3px rgba(231,76,60,0.12)"
-                : "0 0 0 3px rgba(0,194,168,0.12)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = arrivalTooEarly
-                ? "#e74c3c"
-                : "#e8edf0";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          />
-          {arrivalTooEarly && minArrivalTime ? (
-            <p
-              role="alert"
-              style={{
-                fontSize: 12,
-                color: "#e74c3c",
-                margin: "5px 0 0",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              ⚠ Must be after <strong>{to12h(minArrivalTime)}</strong> — when
-              the previous trip ends.
-            </p>
-          ) : (
-            <p style={{ fontSize: 12, color: "#5A6A7A", margin: "5px 0 0" }}>
-              When do you need to arrive at your destination?
-            </p>
-          )}
-        </div>
-
-        {/* Pickup time — readonly window: arrival − duration − vehicle margin, ±10min */}
-        <div>
-          <label
-            style={{
-              ...labelStyle,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Clock size={13} style={{ color: "#00C2A8" }} aria-hidden="true" />
-            {isSharedVehicle(data.vehicleType)
-              ? "Board station by"
-              : "Pickup time"}
-            <span
-              title={
-                isSharedVehicle(data.vehicleType)
-                  ? "Time to be at the pickup station. Computed from arrival − walk from dropoff station − ride − buffer."
-                  : "Computed from arrival − drive − buffer. You can depart earlier."
-              }
-              style={{ cursor: "help", color: "#5A6A7A" }}
-            >
-              <Info size={12} aria-hidden="true" />
-            </span>
-          </label>
-          {data.pickupTime ? (
-            <div
-              style={readonlyStyle}
-              aria-label="Pickup time window"
-              role="status"
-            >
-              <span
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: "#0B1E3D",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {/* {to12h(data.pickupTime)} ~ {to12h(pickupWindowEnd)} */}
-                {to12h(data.pickupTime)}
-              </span>
-            </div>
-          ) : (
-            <div
-              style={readonlyStyle}
-              aria-label="Computed pickup time"
-              role="status"
-            >
-              <span style={{ fontSize: 14, color: "#9aa5b4" }}>
-                {!data.pickup || !data.dropoff
-                  ? "Set pickup + dropoff first"
-                  : !data.arrivalTime
-                    ? "Set arrival time above"
-                    : "Calculating…"}
-              </span>
-            </div>
-          )}
-          {isSharedVehicle(data.vehicleType) &&
-            data.pickupTime &&
-            data.walkingMinToStation != null &&
-            data.walkingMinToStation > 0 && (
-              <p style={{ fontSize: 12, color: "#7A5000", margin: "5px 0 0" }}>
-                Leave home by{" "}
-                <strong>
-                  {to12h(
-                    toHHMM(
-                      toMinutes(data.pickupTime) - data.walkingMinToStation,
-                    ),
-                  )}
-                </strong>{" "}
-                (~{data.walkingMinToStation} min walk to station)
-              </p>
-            )}
-        </div>
-
-        {/* Extra passengers */}
-        <div>
-          <label style={labelStyle}>Extra passengers</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const nextPassengers = (data.passengers ?? []).slice(0, -1);
-                onChange({
-                  ...data,
-                  extraPassengers: nextPassengers.length,
-                  passengers: nextPassengers,
-                });
-              }}
-              disabled={(data.extraPassengers ?? 0) <= 0}
-              aria-label="Decrease passengers"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                border: "1.5px solid #e8edf0",
-                background: "#f8f9fa",
-                cursor:
-                  (data.extraPassengers ?? 0) <= 0 ? "not-allowed" : "pointer",
-                fontSize: 20,
-                color: "#0B1E3D",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              −
-            </button>
-            <span
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: "#0B1E3D",
-                minWidth: 24,
-                textAlign: "center",
-              }}
-            >
-              {data.extraPassengers ?? 0}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  (data.extraPassengers ?? 0) >=
-                  maxExtraPassengers(data.vehicleType)
-                )
-                  return;
-                const nextPassengers = [
-                  ...(data.passengers ?? []),
-                  {
-                    id: Math.random().toString(36).slice(2, 9),
-                    sameAsMain: true,
-                    pickup: null,
-                    dropoff: null,
-                  },
-                ];
-                onChange({
-                  ...data,
-                  extraPassengers: nextPassengers.length,
-                  passengers: nextPassengers,
-                });
-              }}
-              disabled={
-                (data.extraPassengers ?? 0) >=
-                maxExtraPassengers(data.vehicleType)
-              }
-              aria-label="Increase passengers"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                border: "1.5px solid #e8edf0",
-                background: "#f8f9fa",
-                cursor:
-                  (data.extraPassengers ?? 0) >=
-                  maxExtraPassengers(data.vehicleType)
-                    ? "not-allowed"
-                    : "pointer",
-                fontSize: 20,
-                color: "#0B1E3D",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              +
-            </button>
-            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
-              (you + {data.extraPassengers ?? 0} passenger
-              {(data.extraPassengers ?? 0) !== 1 ? "s" : ""})
-            </span>
-          </div>
-
-          {/* Per-passenger pickup/dropoff choice — private vehicles only */}
-          {!isSharedVehicle(data.vehicleType) &&
-            (data.passengers ?? []).map((p, idx) => (
-              <div
-                key={p.id}
-                style={{
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  background: "#f8f9fa",
-                  borderRadius: 10,
-                  border: "1.5px solid #e8edf0",
-                }}
-              >
-                <span
+              {data.dropoff &&
+                !isAlreadySaved(data.dropoff, savedAddresses) && (
+                  <SaveAddressButton
+                    point={data.dropoff}
+                    onSaved={(s) => onAddressSaved?.(s)}
+                  />
+                )}
+              {onPickFromMap && (
+                <button
+                  type="button"
+                  onClick={() => onPickFromMap("dropoff")}
+                  style={pickBtnStyle(picking === "dropoff")}
+                >
+                  <MapPin size={13} aria-hidden="true" />
+                  {picking === "dropoff" ? "Click the map…" : "Pick from map"}
+                </button>
+              )}
+              {isSharedVehicle(data.vehicleType) &&
+                data.dropoff &&
+                data.dropoffStation && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: "#7A5000",
+                      background: "rgba(245,166,35,0.1)",
+                      border: "1px solid rgba(245,166,35,0.35)",
+                      borderRadius: 8,
+                      padding: "5px 10px",
+                    }}
+                  >
+                    <span aria-hidden="true">↪</span>
+                    <span>
+                      Station: <strong>{data.dropoffStation.name}</strong>
+                      {data.walkingMinFromStation != null
+                        ? ` (~${data.walkingMinFromStation} min walk)`
+                        : ""}
+                    </span>
+                  </div>
+                )}
+              {locationError && (
+                <div
+                  role="alert"
                   style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "#0B1E3D",
-                    display: "block",
-                    marginBottom: 6,
+                    fontSize: 13,
+                    color: "#e74c3c",
+                    background: "rgba(231,76,60,0.07)",
+                    border: "1px solid rgba(231,76,60,0.2)",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    marginTop: 6,
                   }}
                 >
-                  Passenger {idx + 1}
+                  ⚠ {locationError}
+                </div>
+              )}
+            </div>
+
+            {/* Route info pill */}
+            {routeLoading && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  color: "#5A6A7A",
+                }}
+              >
+                <Loader2 size={14} className="spin" aria-hidden="true" />
+                Calculating route…
+              </div>
+            )}
+            {!routeLoading && data.distanceKm && data.durationMinutes && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 12px",
+                  background: "#eff7f6",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: "#0B1E3D",
+                  fontWeight: 500,
+                }}
+              >
+                <Info
+                  size={14}
+                  style={{ color: "#00C2A8", flexShrink: 0 }}
+                  aria-hidden="true"
+                />
+                <span>
+                  <strong style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {data.distanceKm} km
+                  </strong>
+                  {" · "}
+                  <strong style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {data.durationMinutes} min
+                  </strong>
+                  {" drive"}
                 </span>
-                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updatePassenger(p.id, {
+              </div>
+            )}
+
+            {/* Arrival time */}
+            <div>
+              <label htmlFor={`arrival-${data.id}`} style={labelStyle}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Clock
+                    size={13}
+                    style={{ color: "#F5A623" }}
+                    aria-hidden="true"
+                  />
+                  Arrival time{" "}
+                  <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+                    *
+                  </span>
+                </span>
+              </label>
+              <input
+                id={`arrival-${data.id}`}
+                type="time"
+                value={data.arrivalTime}
+                min={minArrivalTime ?? undefined}
+                onChange={(e) => set("arrivalTime", e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  height: 52,
+                  padding: "0 14px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${arrivalTooEarly ? "#e74c3c" : "#e8edf0"}`,
+                  background: "#f8f9fa",
+                  fontSize: 15,
+                  fontFamily: "inherit",
+                  color: "#0B1E3D",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "border-color 0.15s",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = arrivalTooEarly
+                    ? "#e74c3c"
+                    : "#00C2A8";
+                  e.currentTarget.style.boxShadow = arrivalTooEarly
+                    ? "0 0 0 3px rgba(231,76,60,0.12)"
+                    : "0 0 0 3px rgba(0,194,168,0.12)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = arrivalTooEarly
+                    ? "#e74c3c"
+                    : "#e8edf0";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+              {arrivalTooEarly && minArrivalTime ? (
+                <p
+                  role="alert"
+                  style={{
+                    fontSize: 12,
+                    color: "#e74c3c",
+                    margin: "5px 0 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  ⚠ Must be after <strong>{to12h(minArrivalTime)}</strong> —
+                  when the previous trip ends.
+                </p>
+              ) : (
+                <p
+                  style={{ fontSize: 12, color: "#5A6A7A", margin: "5px 0 0" }}
+                >
+                  When do you need to arrive at your destination?
+                </p>
+              )}
+            </div>
+
+            {/* Pickup time — readonly window: arrival − duration − vehicle margin, ±10min */}
+            <div>
+              <label
+                style={{
+                  ...labelStyle,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Clock
+                  size={13}
+                  style={{ color: "#00C2A8" }}
+                  aria-hidden="true"
+                />
+                {isSharedVehicle(data.vehicleType)
+                  ? "Board station by"
+                  : "Pickup time"}
+                <span
+                  title={
+                    isSharedVehicle(data.vehicleType)
+                      ? "Time to be at the pickup station. Computed from arrival − walk from dropoff station − ride − buffer."
+                      : "Computed from arrival − drive − buffer. You can depart earlier."
+                  }
+                  style={{ cursor: "help", color: "#5A6A7A" }}
+                >
+                  <Info size={12} aria-hidden="true" />
+                </span>
+              </label>
+              {data.pickupTime ? (
+                <div
+                  style={readonlyStyle}
+                  aria-label="Pickup time window"
+                  role="status"
+                >
+                  <span
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: "#0B1E3D",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {/* {to12h(data.pickupTime)} ~ {to12h(pickupWindowEnd)} */}
+                    {to12h(data.pickupTime)}
+                  </span>
+                </div>
+              ) : (
+                <div
+                  style={readonlyStyle}
+                  aria-label="Computed pickup time"
+                  role="status"
+                >
+                  <span style={{ fontSize: 14, color: "#9aa5b4" }}>
+                    {!data.pickup || !data.dropoff
+                      ? "Set pickup + dropoff first"
+                      : !data.arrivalTime
+                        ? "Set arrival time above"
+                        : "Calculating…"}
+                  </span>
+                </div>
+              )}
+              {isSharedVehicle(data.vehicleType) &&
+                data.pickupTime &&
+                data.walkingMinToStation != null &&
+                data.walkingMinToStation > 0 && (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#7A5000",
+                      margin: "5px 0 0",
+                    }}
+                  >
+                    Leave home by{" "}
+                    <strong>
+                      {to12h(
+                        toHHMM(
+                          toMinutes(data.pickupTime) - data.walkingMinToStation,
+                        ),
+                      )}
+                    </strong>{" "}
+                    (~{data.walkingMinToStation} min walk to station)
+                  </p>
+                )}
+            </div>
+
+            {/* Extra passengers */}
+            <div>
+              <label style={labelStyle}>Extra passengers</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextPassengers = (data.passengers ?? []).slice(0, -1);
+                    onChange({
+                      ...data,
+                      extraPassengers: nextPassengers.length,
+                      passengers: nextPassengers,
+                    });
+                  }}
+                  disabled={(data.extraPassengers ?? 0) <= 0}
+                  aria-label="Decrease passengers"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    border: "1.5px solid #e8edf0",
+                    background: "#f8f9fa",
+                    cursor:
+                      (data.extraPassengers ?? 0) <= 0
+                        ? "not-allowed"
+                        : "pointer",
+                    fontSize: 20,
+                    color: "#0B1E3D",
+                    fontFamily: "inherit",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  −
+                </button>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "#0B1E3D",
+                    minWidth: 24,
+                    textAlign: "center",
+                  }}
+                >
+                  {data.extraPassengers ?? 0}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      (data.extraPassengers ?? 0) >=
+                      maxExtraPassengers(data.vehicleType)
+                    )
+                      return;
+                    const nextPassengers = [
+                      ...(data.passengers ?? []),
+                      {
+                        id: Math.random().toString(36).slice(2, 9),
                         sameAsMain: true,
                         pickup: null,
                         dropoff: null,
-                      })
-                    }
-                    style={pickBtnStyle(p.sameAsMain)}
-                  >
-                    Same as main
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updatePassenger(p.id, { sameAsMain: false })}
-                    style={pickBtnStyle(!p.sameAsMain)}
-                  >
-                    Different points
-                  </button>
-                </div>
-                {!p.sameAsMain && (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
-                  >
-                    <div>
-                      <AddressInput
-                        id={`pax-${p.id}-pickup`}
-                        placeholder="Passenger pickup address"
-                        value={p.pickup}
-                        onChange={(pt) => updatePassenger(p.id, { pickup: pt })}
-                        iconColor="#0B1E3D"
-                        savedAddresses={savedAddresses}
-                      />
-                      {data.pickup && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updatePassenger(p.id, { pickup: data.pickup })
-                          }
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            fontFamily: "inherit",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#0B1E3D",
-                            padding: 0,
-                          }}
-                        >
-                          Use main pickup location
-                        </button>
-                      )}
-                    </div>
-                    <div>
-                      <AddressInput
-                        id={`pax-${p.id}-dropoff`}
-                        placeholder="Passenger dropoff address"
-                        value={p.dropoff}
-                        onChange={(pt) => updatePassenger(p.id, { dropoff: pt })}
-                        iconColor="#00C2A8"
-                        savedAddresses={savedAddresses}
-                      />
-                      {data.dropoff && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updatePassenger(p.id, { dropoff: data.dropoff })
-                          }
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            fontFamily: "inherit",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#00897B",
-                            padding: 0,
-                          }}
-                        >
-                          Use main dropoff location
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                      },
+                    ];
+                    onChange({
+                      ...data,
+                      extraPassengers: nextPassengers.length,
+                      passengers: nextPassengers,
+                    });
+                  }}
+                  disabled={
+                    (data.extraPassengers ?? 0) >=
+                    maxExtraPassengers(data.vehicleType)
+                  }
+                  aria-label="Increase passengers"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    border: "1.5px solid #e8edf0",
+                    background: "#f8f9fa",
+                    cursor:
+                      (data.extraPassengers ?? 0) >=
+                      maxExtraPassengers(data.vehicleType)
+                        ? "not-allowed"
+                        : "pointer",
+                    fontSize: 20,
+                    color: "#0B1E3D",
+                    fontFamily: "inherit",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  +
+                </button>
+                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                  (you + {data.extraPassengers ?? 0} passenger
+                  {(data.extraPassengers ?? 0) !== 1 ? "s" : ""})
+                </span>
               </div>
-            ))}
 
-          {detourExceeded && (
-            <div
-              role="alert"
-              style={{
-                fontSize: 13,
-                color: "#e74c3c",
-                background: "rgba(231,76,60,0.07)",
-                border: "1px solid rgba(231,76,60,0.2)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                marginTop: 10,
-              }}
-            >
-              ⚠ Passenger detour exceeds 25% of the base route — adjust points.
+              {/* Per-passenger pickup/dropoff choice — private vehicles only */}
+              {!isSharedVehicle(data.vehicleType) &&
+                (data.passengers ?? []).map((p, idx) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      background: "#f8f9fa",
+                      borderRadius: 10,
+                      border: "1.5px solid #e8edf0",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#0B1E3D",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      Passenger {idx + 1}
+                    </span>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePassenger(p.id, {
+                            sameAsMain: true,
+                            pickup: null,
+                            dropoff: null,
+                          })
+                        }
+                        style={pickBtnStyle(p.sameAsMain)}
+                      >
+                        Same as main
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePassenger(p.id, { sameAsMain: false })
+                        }
+                        style={pickBtnStyle(!p.sameAsMain)}
+                      >
+                        Different points
+                      </button>
+                    </div>
+                    {!p.sameAsMain && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div>
+                          <AddressInput
+                            id={`pax-${p.id}-pickup`}
+                            placeholder="Passenger pickup address"
+                            value={p.pickup}
+                            onChange={(pt) =>
+                              updatePassenger(p.id, { pickup: pt })
+                            }
+                            iconColor="#0B1E3D"
+                            savedAddresses={savedAddresses}
+                          />
+                          {data.pickup && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePassenger(p.id, { pickup: data.pickup })
+                              }
+                              style={{
+                                marginTop: 4,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                fontFamily: "inherit",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#0B1E3D",
+                                padding: 0,
+                              }}
+                            >
+                              Use main pickup location
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <AddressInput
+                            id={`pax-${p.id}-dropoff`}
+                            placeholder="Passenger dropoff address"
+                            value={p.dropoff}
+                            onChange={(pt) =>
+                              updatePassenger(p.id, { dropoff: pt })
+                            }
+                            iconColor="#00C2A8"
+                            savedAddresses={savedAddresses}
+                          />
+                          {data.dropoff && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePassenger(p.id, { dropoff: data.dropoff })
+                              }
+                              style={{
+                                marginTop: 4,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                fontFamily: "inherit",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#00897B",
+                                padding: 0,
+                              }}
+                            >
+                              Use main dropoff location
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+              {detourExceeded && (
+                <div
+                  role="alert"
+                  style={{
+                    fontSize: 13,
+                    color: "#e74c3c",
+                    background: "rgba(231,76,60,0.07)",
+                    border: "1px solid rgba(231,76,60,0.2)",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    marginTop: 10,
+                  }}
+                >
+                  ⚠ Passenger detour exceeds 25% of the base route — adjust
+                  points.
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {isPrivate && (
+          <>
+            <div>
+              <label style={labelStyle}>Number of passengers</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    set(
+                      "numberOfPassengers",
+                      Math.max(1, data.numberOfPassengers - 1),
+                    )
+                  }
+                  disabled={data.numberOfPassengers <= 1}
+                  aria-label="Decrease passengers"
+                  style={counterButtonStyle(data.numberOfPassengers <= 1)}
+                >
+                  −
+                </button>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "#0B1E3D",
+                    minWidth: 24,
+                    textAlign: "center",
+                  }}
+                >
+                  {data.numberOfPassengers}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    set(
+                      "numberOfPassengers",
+                      Math.min(
+                        vMap[data.vehicleType as VehicleKey].occupancy,
+                        data.numberOfPassengers + 1,
+                      ),
+                    )
+                  }
+                  disabled={
+                    data.numberOfPassengers >=
+                    vMap[data.vehicleType as VehicleKey].occupancy
+                  }
+                  aria-label="Increase passengers"
+                  style={counterButtonStyle(
+                    data.numberOfPassengers >=
+                      vMap[data.vehicleType as VehicleKey].occupancy,
+                  )}
+                >
+                  +
+                </button>
+                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                  Up to {vMap[data.vehicleType as VehicleKey].occupancy}{" "}
+                  including you
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Pickup location *</label>
+              <AddressInput
+                id={`pickup-${data.id}`}
+                placeholder="Enter pickup address"
+                value={data.pickup}
+                onChange={(point) => set("pickup", point)}
+                iconColor="#0B1E3D"
+                savedAddresses={savedAddresses}
+              />
+              {data.pickup && !isAlreadySaved(data.pickup, savedAddresses) && (
+                <SaveAddressButton
+                  point={data.pickup}
+                  onSaved={(saved) => onAddressSaved?.(saved)}
+                />
+              )}
+              {onPickFromMap && (
+                <button
+                  type="button"
+                  onClick={() => onPickFromMap("pickup")}
+                  style={pickBtnStyle(picking === "pickup")}
+                >
+                  <MapPin size={13} aria-hidden="true" />
+                  {picking === "pickup" ? "Click the map…" : "Pick from map"}
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {data.stops.map((stop, stopIndex) => {
+                const onboardBefore = data.stops
+                  .slice(0, stopIndex)
+                  .reduce(
+                    (count, previous) =>
+                      count - previous.alighting + previous.boarding,
+                    data.numberOfPassengers,
+                  );
+                const maxAlighting = Math.max(0, onboardBefore - 1);
+                const maxBoarding = Math.max(
+                  0,
+                  vMap[data.vehicleType as VehicleKey].occupancy -
+                    (onboardBefore - stop.alighting),
+                );
+                return (
+                  <div
+                    key={stop.id}
+                    style={{
+                      padding: 12,
+                      background: "#f8f9fa",
+                      border: "1.5px solid #e8edf0",
+                      borderRadius: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <strong style={{ fontSize: 13, color: "#0B1E3D" }}>
+                        Stop {stopIndex + 1}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "stops",
+                            data.stops.filter((item) => item.id !== stop.id),
+                          )
+                        }
+                        aria-label={`Remove stop ${stopIndex + 1}`}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          color: "#e74c3c",
+                          cursor: "pointer",
+                          padding: 4,
+                        }}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <AddressInput
+                      id={`stop-${data.id}-${stop.id}`}
+                      placeholder="Enter stop address"
+                      value={stop.point}
+                      onChange={(point) => updateStop(stop.id, { point })}
+                      iconColor="#F5A623"
+                      savedAddresses={savedAddresses}
+                    />
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 10,
+                        marginTop: 10,
+                      }}
+                    >
+                      <CounterField
+                        label="Alighting"
+                        value={stop.alighting}
+                        max={maxAlighting}
+                        onChange={(alighting) =>
+                          updateStop(stop.id, { alighting })
+                        }
+                      />
+                      <CounterField
+                        label="Boarding"
+                        value={stop.boarding}
+                        max={maxBoarding}
+                        onChange={(boarding) =>
+                          updateStop(stop.id, { boarding })
+                        }
+                      />
+                    </div>
+                    <label
+                      htmlFor={`wait-${stop.id}`}
+                      style={{ ...labelStyle, marginTop: 10 }}
+                    >
+                      Waiting time (hh:mm)
+                    </label>
+                    <WaitDurationInput
+                      key={`${stop.id}-${stop.waitingMinutes}`}
+                      id={`wait-${stop.id}`}
+                      minutes={stop.waitingMinutes}
+                      onChange={(waitingMinutes) =>
+                        updateStop(stop.id, { waitingMinutes })
+                      }
+                    />
+                  </div>
+                );
+              })}
+              {data.stops.length < 4 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    set("stops", [
+                      ...data.stops,
+                      {
+                        id: Math.random().toString(36).slice(2, 9),
+                        point: null,
+                        alighting: 0,
+                        boarding: 0,
+                        waitingMinutes: 0,
+                      },
+                    ])
+                  }
+                  style={{ ...pickBtnStyle(false), marginTop: 0 }}
+                >
+                  + Add stop point
+                </button>
+              )}
+            </div>
+
+            <div>
+              <label style={labelStyle}>Dropoff location *</label>
+              <AddressInput
+                id={`dropoff-${data.id}`}
+                placeholder="Enter dropoff address"
+                value={data.dropoff}
+                onChange={(point) => set("dropoff", point)}
+                iconColor="#00C2A8"
+                savedAddresses={savedAddresses}
+              />
+              {data.dropoff &&
+                !isAlreadySaved(data.dropoff, savedAddresses) && (
+                  <SaveAddressButton
+                    point={data.dropoff}
+                    onSaved={(saved) => onAddressSaved?.(saved)}
+                  />
+                )}
+              {onPickFromMap && (
+                <button
+                  type="button"
+                  onClick={() => onPickFromMap("dropoff")}
+                  style={pickBtnStyle(picking === "dropoff")}
+                >
+                  <MapPin size={13} aria-hidden="true" />
+                  {picking === "dropoff" ? "Click the map…" : "Pick from map"}
+                </button>
+              )}
+              {locationError && (
+                <div role="alert" style={locationErrorStyle}>
+                  ⚠ {locationError}
+                </div>
+              )}
+            </div>
+
+            {routeLoading && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  color: "#5A6A7A",
+                }}
+              >
+                <Loader2 size={14} className="spin" aria-hidden="true" />
+                Calculating route…
+              </div>
+            )}
+            {!routeLoading && data.distanceKm && data.durationMinutes && (
+              <div style={routeInfoStyle}>
+                <Info
+                  size={14}
+                  style={{ color: "#00C2A8", flexShrink: 0 }}
+                  aria-hidden="true"
+                />
+                <span>
+                  <strong>{data.distanceKm} km</strong> ·{" "}
+                  <strong>{data.durationMinutes} min</strong> drive
+                </span>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor={`pickup-time-${data.id}`} style={labelStyle}>
+                Pickup time *
+              </label>
+              <input
+                id={`pickup-time-${data.id}`}
+                type="time"
+                value={data.pickupTime}
+                onChange={(event) => set("pickupTime", event.target.value)}
+                required
+                style={timeInputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Arrival time</label>
+              <div style={readonlyStyle} role="status">
+                <Clock
+                  size={15}
+                  style={{ color: "#F5A623" }}
+                  aria-hidden="true"
+                />
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: data.arrivalTime ? "#0B1E3D" : "#9aa5b4",
+                  }}
+                >
+                  {data.arrivalTime
+                    ? to12h(data.arrivalTime)
+                    : "Set pickup and route first"}
+                </span>
+              </div>
+              {data.stops.length > 0 && (
+                <p
+                  style={{ fontSize: 12, color: "#5A6A7A", margin: "5px 0 0" }}
+                >
+                  Includes{" "}
+                  {data.stops.reduce(
+                    (total, stop) => total + stop.waitingMinutes,
+                    0,
+                  )}{" "}
+                  min waiting time.
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

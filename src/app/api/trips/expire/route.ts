@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
+import { Trip } from "@/models/Trip";
 
 const EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -25,16 +26,25 @@ export async function POST(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - EXPIRY_MS);
 
-  const result = await Booking.updateMany(
-    {
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      createdAt: { $lte: cutoff },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
+  const expireFilter = {
+    status: "pending_payment",
+    paymentStatus: { $in: ["pending", "failed"] },
+    createdAt: { $lte: cutoff },
+  };
 
-  return NextResponse.json({ expired: result.modifiedCount });
+  const [reqResult, tripResult] = await Promise.all([
+    Request.updateMany(expireFilter, {
+      $set: { status: "time_out", paymentStatus: "expired" },
+    }),
+    Trip.updateMany(expireFilter, {
+      $set: { status: "time_out", paymentStatus: "expired" },
+    }),
+  ]);
+
+  return NextResponse.json({
+    expiredRequests: reqResult.modifiedCount,
+    expiredTrips: tripResult.modifiedCount,
+  });
 }
 
 // Allow Vercel Cron to call via GET as well
