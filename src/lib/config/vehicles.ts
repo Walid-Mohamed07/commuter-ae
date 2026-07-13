@@ -27,7 +27,7 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     buffer: 20,
     window: 10,
     capacity: 4,
-    occupancy: 0,
+    occupancy: 4,
     min_occupancy: 1,
   },
   taxi_private: {
@@ -38,7 +38,7 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     buffer: 20,
     window: 10,
     capacity: 4,
-    occupancy: 0,
+    occupancy: 4,
     min_occupancy: 1,
   },
   taxi_shared: {
@@ -49,7 +49,7 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     buffer: 30,
     window: 20,
     capacity: 4,
-    occupancy: 0,
+    occupancy: 3,
     min_occupancy: 2,
   },
   van_shared: {
@@ -60,8 +60,8 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     buffer: 45,
     window: 25,
     capacity: 7,
-    occupancy: 0,
-    min_occupancy: 3,
+    occupancy: 6,
+    min_occupancy: 4,
   },
   microbus_shared: {
     key: "microbus_shared",
@@ -71,8 +71,8 @@ export const VEHICLES: Record<VehicleKey, VehicleConfig> = {
     buffer: 45,
     window: 30,
     capacity: 14,
-    occupancy: 0,
-    min_occupancy: 5,
+    occupancy: 10,
+    min_occupancy: 8,
   },
 };
 
@@ -86,12 +86,24 @@ export function priceFor(
   return Math.round(distanceKm * vehiclesMap[key].rate);
 }
 
+/** Private-ride wait charge: each 60 minutes costs 50 km at 50% of vehicle rate. */
+export function waitingCostEgp(
+  waitingMinutes: number,
+  key: VehicleKey,
+  vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
+): number {
+  const minutes = Number.isFinite(waitingMinutes)
+    ? Math.max(0, waitingMinutes)
+    : 0;
+  return Math.round((minutes / 60) * (50 * vehiclesMap[key].rate * 0.5));
+}
+
 /** Max extra passengers allowed per vehicle type */
-export function maxExtraPassengers(key: VehicleKey): number {
+export function maxExtraPassengers(key: VehicleKey | ""): number {
   if (key === "taxi_shared") return 2;
   if (key === "van_shared") return 4;
   if (key === "microbus_shared") return 9;
-  return 2; // private_car, taxi_private, taxi_shared
+  return 2; // private_car, taxi_private, taxi_shared, or unset
 }
 
 /**
@@ -102,7 +114,7 @@ export function maxExtraPassengers(key: VehicleKey): number {
 export function finalPrice(
   basePrice: number,
   extraPassengers: number,
-  vehicleType: VehicleKey,
+  vehicleType: VehicleKey | "",
 ): number {
   const n = extraPassengers;
   // const r = (factor: number) => Math.round(basePrice * (n + 1) * factor);
@@ -111,6 +123,7 @@ export function finalPrice(
   if (vehicleType === "private_car" || vehicleType === "taxi_private") {
     if (n === 1) return r(0.25);
     if (n === 2) return r(0.5);
+    if (n === 3) return r(0.75);
     return basePrice;
   }
 

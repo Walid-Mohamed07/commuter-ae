@@ -18,8 +18,36 @@ const PassengerDetailSchema = new Schema(
   { _id: false },
 );
 
+const StationSchema = new Schema(
+  {
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    name: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const StopSchema = new Schema(
+  {
+    point: { type: PointSchema, required: true },
+    alighting: { type: Number, required: true, min: 0 },
+    boarding: { type: Number, required: true, min: 0 },
+    waitingMinutes: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const TripSchema = new Schema(
   {
+    requestId: {
+      type: Types.ObjectId,
+      ref: "Request",
+      required: true,
+      index: true,
+    },
+    userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
+    date: { type: String, required: true, index: true },
+    cycleIndex: { type: Number, required: true, min: 0 },
     pickup: { type: PointSchema, required: true },
     dropoff: { type: PointSchema, required: true },
     vehicleType: {
@@ -34,41 +62,25 @@ const TripSchema = new Schema(
       ],
     },
     rideType: { type: String, required: true, enum: ["private", "shared"] },
-    arrivalTime: { type: String, required: true }, // "HH:MM"
-    pickupTime: { type: String, required: true }, // "HH:MM" — single computed field
+    arrivalTime: { type: String, required: true },
+    pickupTime: { type: String, required: true },
     distanceKm: { type: Number, required: true },
     durationMinutes: { type: Number, required: true },
-    priceEgp: { type: Number, required: true }, // server-recomputed
+    priceEgp: { type: Number, required: true },
     extraPassengers: { type: Number, default: 0, min: 0, max: 9 },
     passengers: { type: [PassengerDetailSchema], default: [] },
-  },
-  { _id: true },
-);
-
-const BookingSchema = new Schema(
-  {
-    userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
-    date: { type: String, required: true }, // "YYYY-MM-DD"
-    groupId: { type: String, index: true }, // shared across bookings created together (multi-date)
-    trips: {
-      type: [TripSchema],
-      required: true,
-      validate: (v: unknown[]) => v.length > 0,
-    },
-    amountEgp: { type: Number, required: true }, // server sum of trips[].priceEgp
-
-    // ── Payment (Kashier) ──
+    numberOfPassengers: { type: Number, default: 1, min: 1 },
+    stops: { type: [StopSchema], default: [] },
+    pickupStation: { type: StationSchema, required: false },
+    dropoffStation: { type: StationSchema, required: false },
+    walkingMinToStation: { type: Number, min: 0 },
+    walkingMinFromStation: { type: Number, min: 0 },
     paymentStatus: {
       type: String,
       required: true,
       default: "pending",
       enum: ["pending", "paid", "failed", "refunded", "expired"],
     },
-    kashierSessionId: { type: String },
-    kashierOrderId: { type: String }, // = booking _id or groupId sent as orderId
-    paidAt: { type: Date },
-
-    // ── Ride lifecycle ──
     status: {
       type: String,
       required: true,
@@ -85,8 +97,11 @@ const BookingSchema = new Schema(
       ],
     },
   },
-  { timestamps: true },
+  { timestamps: true, collection: "trips" },
 );
 
-export type BookingDoc = InferSchemaType<typeof BookingSchema>;
-export const Booking = models.Booking || model("Booking", BookingSchema);
+TripSchema.index({ requestId: 1, date: 1 });
+TripSchema.index({ userId: 1, date: -1 });
+
+export type TripDoc = InferSchemaType<typeof TripSchema>;
+export const Trip = models.Trip || model("Trip", TripSchema);

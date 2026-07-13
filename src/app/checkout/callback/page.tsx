@@ -3,13 +3,12 @@ import { redirect } from "next/navigation";
 import { CheckCircle, Clock, XCircle, ArrowRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
 import { Types } from "mongoose";
-import { verifyAndSettleBooking, verifyAndSettleGroup } from "@/lib/payments/kashier";
+import { verifyAndSettleBooking } from "@/lib/payments/kashier";
 
 interface SearchParams {
   bookingId?: string;
-  groupId?: string;
   status?: string; // Kashier adds: SUCCESS | FAILURE
 }
 
@@ -26,46 +25,38 @@ export default async function CallbackPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const {
-    bookingId,
-    groupId,
-    status: kashierStatus,
-  } = await searchParams;
+  const { bookingId, status: kashierStatus } = await searchParams;
 
-  if (!groupId && (!bookingId || !Types.ObjectId.isValid(bookingId))) {
+  if (!bookingId || !Types.ObjectId.isValid(bookingId)) {
     redirect("/my-requests");
   }
 
-  // Active verification — query Kashier directly and settle the booking(s).
+  // Active verification — query Kashier directly and settle the booking.
   // Don't rely on the webhook alone (may be delayed or fail to deliver).
-  if (groupId) {
-    await verifyAndSettleGroup(groupId, session.userId);
-  } else {
-    await verifyAndSettleBooking(bookingId!, session.userId);
-  }
+  await verifyAndSettleBooking(bookingId, session.userId);
 
   await connectDB();
-  const bookings = await Booking.find(
-    groupId
-      ? { groupId, userId: new Types.ObjectId(session.userId) }
-      : { _id: bookingId, userId: new Types.ObjectId(session.userId) },
-  )
-    .select("paymentStatus amountEgp status date")
-    .lean<
-      { paymentStatus: string; amountEgp: number; status: string; date: string }[]
-    >();
+  const booking = await Request.findOne({
+    _id: bookingId,
+    userId: new Types.ObjectId(session.userId),
+  })
+    .select("paymentStatus amountEgp status dates")
+    .lean<{
+      paymentStatus: string;
+      amountEgp: number;
+      status: string;
+      dates: string[];
+    }>();
 
-  if (!bookings.length) redirect("/my-requests");
+  if (!booking) redirect("/my-requests");
 
-  const totalAmountEgp = bookings.reduce((sum, b) => sum + b.amountEgp, 0);
-  const dates = bookings.map((b) => b.date).sort();
-  const isPaid = bookings.every((b) => b.paymentStatus === "paid");
+  const isPaid = booking.paymentStatus === "paid";
   const isFailed =
-    bookings.some((b) => b.paymentStatus === "failed") ||
+    booking.paymentStatus === "failed" ||
     kashierStatus === "FAILURE" ||
     kashierStatus === "failure";
   const isProcessing = !isPaid && !isFailed;
-  const booking = { amountEgp: totalAmountEgp, date: dates.join(", ") };
+  const datesLabel = (booking.dates ?? []).join(", ");
 
   return (
     <div
@@ -122,8 +113,8 @@ export default async function CallbackPage({
               Payment confirmed!
             </h1>
             <p style={{ fontSize: 15, color: "#5A6A7A", margin: "0 0 8px" }}>
-              Your booking for{" "}
-              <strong style={{ color: "#0B1E3D" }}>{booking.date}</strong> is
+              Your request for{" "}
+              <strong style={{ color: "#0B1E3D" }}>{datesLabel}</strong> is
               confirmed.
             </p>
             <p
