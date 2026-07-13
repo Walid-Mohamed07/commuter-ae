@@ -1,0 +1,1068 @@
+{
+    "info": {
+        "name": "Commuter API",
+        "_postman_id": "b1f7c0a0-1111-4444-8888-commuter0001",
+        "description": "All backend endpoints for Commuter (Next.js). Auth = httpOnly JWT cookie set by /api/auth/login. Run login first; Postman cookie jar carries it automatically.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:3000"
+        },
+        {
+            "key": "bookingId",
+            "value": ""
+        },
+        {
+            "key": "addressId",
+            "value": ""
+        },
+        {
+            "key": "stationId",
+            "value": ""
+        },
+        {
+            "key": "availabilityId",
+            "value": ""
+        },
+        {
+            "key": "tripId",
+            "value": ""
+        },
+        {
+            "key": "topupId",
+            "value": ""
+        },
+        {
+            "key": "vehicleKey",
+            "value": "private_car"
+        }
+    ],
+    "item": [
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Register (passenger)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "register"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Ahmed Ali\",\n  \"phone\": \"01000000001\",\n  \"password\": \"password123\",\n  \"email\": \"ahmed@example.com\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Sign up Driver",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/signUpDriver",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "signUpDriver"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Mona Driver\",\n  \"phone\": \"01000000002\",\n  \"password\": \"password123\",\n  \"gender\": \"female\",\n  \"email\": \"mona@example.com\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "login"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01000000001\",\n  \"password\": \"password123\",\n  \"role\": \"passenger\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Logout",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/logout",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "logout"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Me (get profile)",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/me",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "me"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Me (update profile)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/me",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "me"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Ahmed Ali\",\n  \"phone\": \"01000000009\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Me (update driver profile)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/me",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "me"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Mona Driver\",\n  \"gender\": \"female\",\n  \"carType\": \"private\",\n  \"vehicleName\": \"Toyota Corolla\",\n  \"vehicleColor\": \"white\",\n  \"licensePlate\": \"ABC 1234\",\n  \"licenseExpiry\": \"2027-01-01\",\n  \"documents\": {\n    \"nationalIdFront\": \"/uploads/documents/idf.jpg\",\n    \"nationalIdBack\": \"/uploads/documents/idb.jpg\",\n    \"drivingLicense\": \"/uploads/documents/dl.jpg\",\n    \"carLicenseFront\": \"/uploads/documents/clf.jpg\",\n    \"carLicenseBack\": \"/uploads/documents/clb.jpg\",\n    \"criminalRecord\": \"/uploads/documents/cr.jpg\"\n  }\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Saved Addresses",
+            "item": [
+                {
+                    "name": "List addresses",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/addresses",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "addresses"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create address",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/addresses",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "addresses"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"label\": \"Home\",\n  \"address\": \"Nasr City, Cairo\",\n  \"lat\": 30.0566,\n  \"lng\": 31.3300\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Update address",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/addresses/{{addressId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "addresses",
+                                "{{addressId}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"label\": \"Work\",\n  \"address\": \"Downtown, Cairo\",\n  \"lat\": 30.0444,\n  \"lng\": 31.2357\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete address",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/addresses/{{addressId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "addresses",
+                                "{{addressId}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Places & Geo",
+            "item": [
+                {
+                    "name": "Autocomplete",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/places/autocomplete?q=nasr city",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "places",
+                                "autocomplete"
+                            ],
+                            "query": [
+                                {
+                                    "key": "q",
+                                    "value": "nasr city"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Place details",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/places/details?id=PLACE_ID_HERE",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "places",
+                                "details"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "PLACE_ID_HERE"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Reverse geocode",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/geocode/reverse?lat=30.0566&lng=31.3300",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "geocode",
+                                "reverse"
+                            ],
+                            "query": [
+                                {
+                                    "key": "lat",
+                                    "value": "30.0566"
+                                },
+                                {
+                                    "key": "lng",
+                                    "value": "31.3300"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Directions",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/directions?origin=30.0566,31.3300&dest=30.0444,31.2357&waypoints=",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "directions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "origin",
+                                    "value": "30.0566,31.3300"
+                                },
+                                {
+                                    "key": "dest",
+                                    "value": "30.0444,31.2357"
+                                },
+                                {
+                                    "key": "waypoints",
+                                    "value": ""
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Stations",
+            "item": [
+                {
+                    "name": "List stations",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/stations",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stations"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create station (admin)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/stations",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stations"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Ramses Station\",\n  \"direction\": \"north\",\n  \"landmark\": \"Ramses Square\",\n  \"stationType\": \"hub\",\n  \"lat\": 30.0626,\n  \"lng\": 31.2497,\n  \"active\": true\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Update station (admin)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/stations/{{stationId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stations",
+                                "{{stationId}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Ramses Station Updated\",\n  \"active\": false\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete station (admin)",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/stations/{{stationId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stations",
+                                "{{stationId}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Import stations (admin, GeoJSON)",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/stations/import",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stations",
+                                "import"
+                            ]
+                        },
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": "/path/to/stations.geojson"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Vehicles",
+            "item": [
+                {
+                    "name": "List vehicles",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/vehicles",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vehicles"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get vehicle by key",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/vehicles/{{vehicleKey}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vehicles",
+                                "{{vehicleKey}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create vehicle (admin)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/vehicles",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vehicles"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"key\": \"private_car\",\n  \"label\": \"Private Car\",\n  \"ride\": \"private\",\n  \"rate\": 15,\n  \"buffer\": 20,\n  \"window\": 0,\n  \"capacity\": 4,\n  \"occupancy\": 1,\n  \"min_occupancy\": 1\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Update vehicle (admin)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/vehicles/{{vehicleKey}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vehicles",
+                                "{{vehicleKey}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"rate\": 16,\n  \"active\": true\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete vehicle (admin)",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/vehicles/{{vehicleKey}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vehicles",
+                                "{{vehicleKey}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Trips",
+            "item": [
+                {
+                    "name": "Create trips / booking",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trips",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trips"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"date\": \"2026-07-14\",\n  \"trips\": [\n    {\n      \"pickup\": { \"address\": \"Nasr City, Cairo\", \"lat\": 30.0566, \"lng\": 31.3300 },\n      \"dropoff\": { \"address\": \"Downtown, Cairo\", \"lat\": 30.0444, \"lng\": 31.2357 },\n      \"vehicleType\": \"private_car\",\n      \"pickupTime\": \"08:15\",\n      \"numberOfPassengers\": 1,\n      \"distanceKm\": 8.4,\n      \"durationMinutes\": 22\n    }\n  ]\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Expire trips (cron)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{CRON_SECRET}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/trips/expire",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "trips",
+                                "expire"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Driver",
+            "item": [
+                {
+                    "name": "Get driver trips",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/trips",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "trips"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Start trip",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/trips/{{tripId}}/start",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "trips",
+                                "{{tripId}}",
+                                "start"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"latitude\": 30.0566,\n  \"longitude\": 31.3300\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get availability",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/availability",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "availability"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Set availability",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/availability",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "availability"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"dates\": [\"2026-07-14\", \"2026-07-15\"],\n  \"startLocation\": { \"address\": \"Nasr City, Cairo\", \"lat\": 30.0566, \"lng\": 31.3300 },\n  \"endLocation\": { \"address\": \"Maadi, Cairo\", \"lat\": 29.9603, \"lng\": 31.2569 },\n  \"startTime\": \"07:00\",\n  \"endTime\": \"17:00\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete availability",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/availability/{{availabilityId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "availability",
+                                "{{availabilityId}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Submit driver review",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/driver/submit-review",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "submit-review"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Payments",
+            "item": [
+                {
+                    "name": "Create payment session",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/session",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "payments",
+                                "session"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Verify payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/verify",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "payments",
+                                "verify"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Pay with wallet",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/wallet",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "payments",
+                                "wallet"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"bookingId\": \"{{bookingId}}\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Webhook (Kashier callback)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/webhook",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "payments",
+                                "webhook"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"merchantOrderId\": \"{{bookingId}}\",\n  \"amount\": \"126\",\n  \"paymentStatus\": \"SUCCESS\",\n  \"transactionId\": \"TX-123\",\n  \"currency\": \"EGP\",\n  \"signature\": \"REPLACE_WITH_VALID_SIGNATURE\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Wallet",
+            "item": [
+                {
+                    "name": "Get wallet",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/wallet",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "wallet"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Top up",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/wallet/topup",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "wallet",
+                                "topup"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"amount\": 100\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Verify top up",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/wallet/topup/verify",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "wallet",
+                                "topup",
+                                "verify"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"topupId\": \"{{topupId}}\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Reconcile wallet",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/wallet/reconcile",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "wallet",
+                                "reconcile"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Upload",
+            "item": [
+                {
+                    "name": "Upload document (driver)",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{baseUrl}}/api/upload",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "upload"
+                            ]
+                        },
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": "/path/to/document.jpg"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}
