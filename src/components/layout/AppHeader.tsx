@@ -33,7 +33,7 @@ interface Props {
 
 const PASSENGER_NAV_LINKS = [
   { href: "/create", label: "Book", icon: CalendarPlus },
-  { href: "/my-requests", label: "My requests", icon: FileText },
+  // { href: "/my-requests", label: "My requests", icon: FileText },
   { href: "/my-trips", label: "My trips", icon: History },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/profile", label: "Profile", icon: User },
