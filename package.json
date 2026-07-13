@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:stations": "node scripts/seed-stations.cjs"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",

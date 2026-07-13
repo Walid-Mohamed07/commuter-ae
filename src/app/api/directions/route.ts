@@ -4,40 +4,61 @@ const KEY =
   process.env.GOOGLE_MAPS_API_KEY ??
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!;
 
-export async function GET(req: NextRequest) {
-  const origin = req.nextUrl.searchParams.get("origin");
-  const dest = req.nextUrl.searchParams.get("dest");
-  if (!origin || !dest)
-    return NextResponse.json({ error: "missing origin/dest" }, { status: 400 });
+export interface DirectionsResult {
+  coordinates: [number, number][];
+  distance_km: number;
+  duration_minutes: number;
+}
 
+/** Fetch driving directions directly from Google (no internal HTTP hop). */
+export async function fetchDirections(
+  origin: string,
+  dest: string,
+  waypoints?: string,
+): Promise<DirectionsResult[]> {
   const url = new URL("https://maps.googleapis.com/maps/api/directions/json");
   url.searchParams.set("origin", origin);
   url.searchParams.set("destination", dest);
   url.searchParams.set("key", KEY);
   url.searchParams.set("mode", "driving");
-  const wps = req.nextUrl.searchParams.get("waypoints");
-  if (wps) url.searchParams.set("waypoints", wps);
+  if (waypoints) url.searchParams.set("waypoints", waypoints);
 
   const res = await fetch(url.toString());
-  if (!res.ok) return NextResponse.json([], { status: 502 });
+  if (!res.ok) return [];
 
   const data = await res.json();
   if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
     console.error("[api/directions]", data.status, data.error_message);
   }
   const leg = data.routes?.[0]?.legs?.[0];
-  if (!leg) return NextResponse.json([]);
+  if (!leg) return [];
+
+  const legs: { distance: { value: number }; duration: { value: number } }[] =
+    data.routes[0].legs;
+  const totalDistanceM = legs.reduce((sum, l) => sum + l.distance.value, 0);
+  const totalDurationS = legs.reduce((sum, l) => sum + l.duration.value, 0);
 
   const encoded: string = data.routes[0].overview_polyline.points;
   const coords = decodePolyline(encoded);
 
-  return NextResponse.json([
+  return [
     {
       coordinates: coords,
-      distance_km: Math.round((leg.distance.value / 1000) * 10) / 10,
-      duration_minutes: Math.round(leg.duration.value / 60),
+      distance_km: Math.round((totalDistanceM / 1000) * 10) / 10,
+      duration_minutes: Math.round(totalDurationS / 60),
     },
-  ]);
+  ];
+}
+
+export async function GET(req: NextRequest) {
+  const origin = req.nextUrl.searchParams.get("origin");
+  const dest = req.nextUrl.searchParams.get("dest");
+  if (!origin || !dest)
+    return NextResponse.json({ error: "missing origin/dest" }, { status: 400 });
+
+  const wps = req.nextUrl.searchParams.get("waypoints");
+  const result = await fetchDirections(origin, dest, wps ?? undefined);
+  return NextResponse.json(result);
 }
 
 function decodePolyline(encoded: string): [number, number][] {

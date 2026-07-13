@@ -22,7 +22,7 @@ import { useTripStore } from "@/lib/store/useTripStore";
 import LogoutConfirmModal from "@/components/shared/LogoutConfirmModal";
 
 type Variant = "landing" | "app";
-type Role = "passenger" | "driver";
+type Role = "passenger" | "driver" | "admin";
 
 interface Props {
   authed: boolean;

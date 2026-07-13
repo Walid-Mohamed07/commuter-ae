@@ -67,9 +67,15 @@ export async function POST(req: NextRequest) {
     "completed",
   ].includes(st);
 
-  // Conditional update — only settle if still unsettled (race-safe vs verify path)
-  await Booking.findOneAndUpdate(
-    { _id: orderId, paymentStatus: { $in: ["pending", "failed"] } },
+  // orderId is either a single Booking _id or a groupId (multi-date booking) —
+  // match on whichever field applies. Conditional update — only settle if
+  // still unsettled (race-safe vs wallet path).
+  const filter = Types.ObjectId.isValid(orderId)
+    ? { _id: orderId, paymentStatus: { $in: ["pending", "failed"] } }
+    : { groupId: orderId, paymentStatus: { $in: ["pending", "failed"] } };
+
+  await Booking.updateMany(
+    filter,
     paid
       ? { paymentStatus: "paid", status: "submitted", paidAt: new Date() }
       : { paymentStatus: "failed" },

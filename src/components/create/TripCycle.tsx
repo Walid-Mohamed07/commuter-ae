@@ -11,11 +11,13 @@ import {
 } from "lucide-react";
 import AddressInput from "@/components/landing/AddressInput";
 import {
+  VEHICLES,
   VEHICLE_LIST,
   priceFor,
   maxExtraPassengers,
   finalPrice,
   type VehicleKey,
+  type VehicleConfig,
 } from "@/lib/config/vehicles";
 import { computePickupTime, toHHMM, toMinutes } from "@/lib/time/pickupWindow";
 import { fetchRoute } from "@/lib/openrouteservice";
@@ -28,6 +30,13 @@ import {
   walkingMinutes,
   type Station,
 } from "@/lib/geo/stations";
+
+export interface PassengerDetail {
+  id: string;
+  sameAsMain: boolean;
+  pickup: TripPoint | null;
+  dropoff: TripPoint | null;
+}
 
 export interface TripData {
   id: string;
@@ -46,6 +55,9 @@ export interface TripData {
   dropoffStation: { lat: number; lng: number; name: string } | null;
   walkingMinToStation: number | null; // walk from pickup → pickup station
   walkingMinFromStation: number | null; // walk from dropoff station → dropoff
+  passengers: PassengerDetail[]; // per-extra-passenger detail (private vehicles may set distinct points)
+  baseDistanceKm: number | null; // main pickup→dropoff distance (reference for 25% detour cap)
+  passengerDetourKm: number | null; // last computed combined route distance through distinct passenger points
 }
 
 interface Props {
@@ -61,6 +73,8 @@ interface Props {
   stations?: Station[];
   minArrivalTime?: string | null; // earliest valid arrival for this trip
   onAddressSaved?: (saved: SavedAddress) => void;
+  vehiclesMap?: Record<VehicleKey, VehicleConfig>; // DB-hydrated vehicle config (falls back to static seed)
+  vehicleList?: VehicleConfig[]; // DB-hydrated vehicle list for the select options
 }
 
 function pickBtnStyle(active: boolean): React.CSSProperties {
@@ -131,8 +145,12 @@ export default function TripCycle({
   stations = [],
   minArrivalTime,
   onAddressSaved,
+  vehiclesMap,
+  vehicleList,
 }: Props) {
   const [routeLoading, setRouteLoading] = useState(false);
+  const vMap = vehiclesMap ?? VEHICLES;
+  const vList = vehicleList ?? VEHICLE_LIST;
 
   function handleReturnToggle(checked: boolean) {
     if (checked && sourceTripData) {
@@ -152,6 +170,9 @@ export default function TripCycle({
         dropoffStation: null,
         walkingMinToStation: null,
         walkingMinFromStation: null,
+        passengers: [],
+        baseDistanceKm: null,
+        passengerDetourKm: null,
       });
     } else {
       onChange({
@@ -169,6 +190,9 @@ export default function TripCycle({
         dropoffStation: null,
         walkingMinToStation: null,
         walkingMinFromStation: null,
+        passengers: [],
+        baseDistanceKm: null,
+        passengerDetourKm: null,
       });
     }
   }
@@ -187,6 +211,8 @@ export default function TripCycle({
         dropoffStation: null,
         walkingMinToStation: null,
         walkingMinFromStation: null,
+        baseDistanceKm: null,
+        passengerDetourKm: null,
       });
       return;
     }
@@ -232,7 +258,7 @@ export default function TripCycle({
       .then((routes) => {
         if (cancelled || !routes.length) return;
         const { distance_km, duration_minutes, coordinates } = routes[0];
-        const price = priceFor(distance_km, data.vehicleType);
+        const price = priceFor(distance_km, data.vehicleType, vMap);
         // For shared: also subtract walk-from-station time from arrival before computing pickup
         const extraWalk = walkMinFromStation ?? 0;
         const pt = data.arrivalTime
@@ -240,6 +266,7 @@ export default function TripCycle({
               data.arrivalTime,
               duration_minutes + extraWalk,
               data.vehicleType,
+              vMap,
             )
           : "";
         onChange({
@@ -253,6 +280,7 @@ export default function TripCycle({
           dropoffStation: nearDropoffStation,
           walkingMinToStation: walkMinToStation,
           walkingMinFromStation: walkMinFromStation,
+          baseDistanceKm: distance_km,
         });
       })
       .catch(() => {})
@@ -270,6 +298,101 @@ export default function TripCycle({
     stations.length,
   ]);
 
+  /* ── Passenger detour: combined route through distinct passenger points (private vehicles only) ── */
+  useEffect(() => {
+    if (!data.pickup || !data.dropoff) return;
+    const isPrivate = !isSharedVehicle(data.vehicleType);
+    const distinct = isPrivate
+      ? (data.passengers ?? []).filter(
+          (p) => !p.sameAsMain && p.pickup && p.dropoff,
+        )
+      : [];
+
+    let cancelled = false;
+
+    if (distinct.length === 0) {
+      // Nothing distinct — ensure distanceKm reflects the base pickup→dropoff route.
+      if (data.passengerDetourKm == null) return;
+      fetchRoute([data.pickup, data.dropoff])
+        .then((routes) => {
+          if (cancelled || !routes.length) return;
+          const { distance_km, duration_minutes, coordinates } = routes[0];
+          const price = priceFor(distance_km, data.vehicleType, vMap);
+          const pt = data.arrivalTime
+            ? computePickupTime(
+                data.arrivalTime,
+                duration_minutes,
+                data.vehicleType,
+                vMap,
+              )
+            : data.pickupTime;
+          onChange({
+            ...data,
+            distanceKm: distance_km,
+            durationMinutes: duration_minutes,
+            priceEgp: price,
+            pickupTime: pt,
+            routeCoordinates: coordinates,
+            baseDistanceKm: distance_km,
+            passengerDetourKm: null,
+          });
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const waypoints = [
+      data.pickup,
+      ...distinct.map((p) => p.pickup!),
+      ...distinct.map((p) => p.dropoff!),
+      data.dropoff,
+    ];
+
+    fetchRoute(waypoints)
+      .then((routes) => {
+        if (cancelled || !routes.length) return;
+        const { distance_km, duration_minutes, coordinates } = routes[0];
+        const base = data.baseDistanceKm ?? distance_km;
+        const withinLimit = distance_km <= base * 1.25;
+        if (withinLimit) {
+          const price = priceFor(distance_km, data.vehicleType, vMap);
+          const pt = data.arrivalTime
+            ? computePickupTime(
+                data.arrivalTime,
+                duration_minutes,
+                data.vehicleType,
+                vMap,
+              )
+            : data.pickupTime;
+          onChange({
+            ...data,
+            distanceKm: distance_km,
+            durationMinutes: duration_minutes,
+            priceEgp: price,
+            pickupTime: pt,
+            routeCoordinates: coordinates,
+            passengerDetourKm: distance_km,
+          });
+        } else {
+          onChange({ ...data, passengerDetourKm: distance_km });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    JSON.stringify(data.passengers),
+    JSON.stringify(data.pickup),
+    JSON.stringify(data.dropoff),
+    data.vehicleType,
+    data.baseDistanceKm,
+  ]);
+
   /* ── Recompute pickup time when arrival, vehicle, or walking changes ── */
   useEffect(() => {
     if (!data.arrivalTime || !data.durationMinutes) return;
@@ -280,6 +403,7 @@ export default function TripCycle({
       data.arrivalTime,
       data.durationMinutes + extraWalk,
       data.vehicleType,
+      vMap,
     );
     if (pt !== data.pickupTime) onChange({ ...data, pickupTime: pt });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -293,7 +417,7 @@ export default function TripCycle({
   /* ── Recompute price when vehicle changes ── */
   useEffect(() => {
     if (!data.distanceKm) return;
-    const price = priceFor(data.distanceKm, data.vehicleType);
+    const price = priceFor(data.distanceKm, data.vehicleType, vMap);
     if (price !== data.priceEgp) onChange({ ...data, priceEgp: price });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.vehicleType, data.distanceKm]);
@@ -339,13 +463,28 @@ export default function TripCycle({
     return null;
   })();
 
+  // Extra-passenger detour: combined route (private vehicles) must not exceed 25% of base distance
+  const detourExceeded =
+    !isSharedVehicle(data.vehicleType) &&
+    data.passengerDetourKm != null &&
+    data.baseDistanceKm != null &&
+    data.passengerDetourKm > data.baseDistanceKm * 1.25;
+
+  function updatePassenger(id: string, patch: Partial<PassengerDetail>) {
+    onChange({
+      ...data,
+      passengers: (data.passengers ?? []).map((p) =>
+        p.id === id ? { ...p, ...patch } : p,
+      ),
+    });
+  }
+
   return (
     <div
       style={{
         background: "#ffffff",
         borderRadius: 16,
         border: "1.5px solid #eef0f3",
-        overflow: "hidden",
         boxShadow: "0 2px 8px rgba(11,30,61,0.04)",
       }}
     >
@@ -357,6 +496,8 @@ export default function TripCycle({
           justifyContent: "space-between",
           padding: "14px 18px",
           borderBottom: "1px solid #eef0f3",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
           background: "#fafbfc",
           gap: 10,
           flexWrap: "wrap",
@@ -462,6 +603,103 @@ export default function TripCycle({
           gap: 14,
         }}
       >
+        {/* Vehicle type */}
+        <div>
+          <label htmlFor={`vehicle-${data.id}`} style={labelStyle}>
+            Vehicle type{" "}
+            <span aria-hidden="true" style={{ color: "#e74c3c" }}>
+              *
+            </span>
+          </label>
+          <select
+            id={`vehicle-${data.id}`}
+            value={data.vehicleType}
+            onChange={(e) => {
+              const newVehicle = e.target.value as VehicleKey;
+              const newMax = maxExtraPassengers(newVehicle);
+              const clampedPassengers = Math.min(
+                data.extraPassengers ?? 0,
+                newMax,
+              );
+              // Sync passengers array AFTER extraPassengers is clamped — trim to
+              // the new count; shared vehicles force everyone back to "same as main".
+              const isPrivate = !isSharedVehicle(newVehicle);
+              const syncedPassengers = Array.from(
+                { length: clampedPassengers },
+                (_, i) => {
+                  const existing = (data.passengers ?? [])[i];
+                  if (!isPrivate) {
+                    return {
+                      id: existing?.id ?? Math.random().toString(36).slice(2, 9),
+                      sameAsMain: true,
+                      pickup: null,
+                      dropoff: null,
+                    };
+                  }
+                  return (
+                    existing ?? {
+                      id: Math.random().toString(36).slice(2, 9),
+                      sameAsMain: true,
+                      pickup: null,
+                      dropoff: null,
+                    }
+                  );
+                },
+              );
+              const newPickupTime =
+                data.arrivalTime && data.durationMinutes
+                  ? computePickupTime(
+                      data.arrivalTime,
+                      data.durationMinutes,
+                      newVehicle,
+                      vMap,
+                    )
+                  : data.pickupTime;
+              onChange({
+                ...data,
+                vehicleType: newVehicle,
+                extraPassengers: clampedPassengers,
+                passengers: syncedPassengers,
+                pickupTime: newPickupTime,
+              });
+            }}
+            style={{
+              width: "100%",
+              height: 52,
+              padding: "0 14px",
+              borderRadius: 12,
+              border: "1.5px solid #e8edf0",
+              background: "#f8f9fa",
+              fontSize: 15,
+              fontFamily: "inherit",
+              color: "#0B1E3D",
+              appearance: "none",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6A7A' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 14px center",
+              paddingRight: 40,
+              cursor: "pointer",
+              outline: "none",
+              transition: "border-color 0.15s",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "#00C2A8";
+              e.currentTarget.style.boxShadow =
+                "0 0 0 3px rgba(0,194,168,0.12)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "#e8edf0";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            {vList.map((v) => (
+              <option key={v.key} value={v.key}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Pickup */}
         <div>
           <label style={labelStyle}>
@@ -659,76 +897,6 @@ export default function TripCycle({
           </div>
         )}
 
-        {/* Vehicle type */}
-        <div>
-          <label htmlFor={`vehicle-${data.id}`} style={labelStyle}>
-            Vehicle type{" "}
-            <span aria-hidden="true" style={{ color: "#e74c3c" }}>
-              *
-            </span>
-          </label>
-          <select
-            id={`vehicle-${data.id}`}
-            value={data.vehicleType}
-            onChange={(e) => {
-              const newVehicle = e.target.value as VehicleKey;
-              const newMax = maxExtraPassengers(newVehicle);
-              const clampedPassengers = Math.min(
-                data.extraPassengers ?? 0,
-                newMax,
-              );
-              const newPickupTime =
-                data.arrivalTime && data.durationMinutes
-                  ? computePickupTime(
-                      data.arrivalTime,
-                      data.durationMinutes,
-                      newVehicle,
-                    )
-                  : data.pickupTime;
-              onChange({
-                ...data,
-                vehicleType: newVehicle,
-                extraPassengers: clampedPassengers,
-                pickupTime: newPickupTime,
-              });
-            }}
-            style={{
-              width: "100%",
-              height: 52,
-              padding: "0 14px",
-              borderRadius: 12,
-              border: "1.5px solid #e8edf0",
-              background: "#f8f9fa",
-              fontSize: 15,
-              fontFamily: "inherit",
-              color: "#0B1E3D",
-              appearance: "none",
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6A7A' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 14px center",
-              paddingRight: 40,
-              cursor: "pointer",
-              outline: "none",
-              transition: "border-color 0.15s",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "#00C2A8";
-              e.currentTarget.style.boxShadow =
-                "0 0 0 3px rgba(0,194,168,0.12)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "#e8edf0";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          >
-            {VEHICLE_LIST.map((v) => (
-              <option key={v.key} value={v.key}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Arrival time */}
         <div>
           <label htmlFor={`arrival-${data.id}`} style={labelStyle}>
@@ -884,12 +1052,14 @@ export default function TripCycle({
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               type="button"
-              onClick={() =>
-                set(
-                  "extraPassengers",
-                  Math.max(0, (data.extraPassengers ?? 0) - 1),
-                )
-              }
+              onClick={() => {
+                const nextPassengers = (data.passengers ?? []).slice(0, -1);
+                onChange({
+                  ...data,
+                  extraPassengers: nextPassengers.length,
+                  passengers: nextPassengers,
+                });
+              }}
               disabled={(data.extraPassengers ?? 0) <= 0}
               aria-label="Decrease passengers"
               style={{
@@ -923,15 +1093,27 @@ export default function TripCycle({
             </span>
             <button
               type="button"
-              onClick={() =>
-                set(
-                  "extraPassengers",
-                  Math.min(
-                    maxExtraPassengers(data.vehicleType),
-                    (data.extraPassengers ?? 0) + 1,
-                  ),
+              onClick={() => {
+                if (
+                  (data.extraPassengers ?? 0) >=
+                  maxExtraPassengers(data.vehicleType)
                 )
-              }
+                  return;
+                const nextPassengers = [
+                  ...(data.passengers ?? []),
+                  {
+                    id: Math.random().toString(36).slice(2, 9),
+                    sameAsMain: true,
+                    pickup: null,
+                    dropoff: null,
+                  },
+                ];
+                onChange({
+                  ...data,
+                  extraPassengers: nextPassengers.length,
+                  passengers: nextPassengers,
+                });
+              }}
               disabled={
                 (data.extraPassengers ?? 0) >=
                 maxExtraPassengers(data.vehicleType)
@@ -963,6 +1145,140 @@ export default function TripCycle({
               {(data.extraPassengers ?? 0) !== 1 ? "s" : ""})
             </span>
           </div>
+
+          {/* Per-passenger pickup/dropoff choice — private vehicles only */}
+          {!isSharedVehicle(data.vehicleType) &&
+            (data.passengers ?? []).map((p, idx) => (
+              <div
+                key={p.id}
+                style={{
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  background: "#f8f9fa",
+                  borderRadius: 10,
+                  border: "1.5px solid #e8edf0",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#0B1E3D",
+                    display: "block",
+                    marginBottom: 6,
+                  }}
+                >
+                  Passenger {idx + 1}
+                </span>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updatePassenger(p.id, {
+                        sameAsMain: true,
+                        pickup: null,
+                        dropoff: null,
+                      })
+                    }
+                    style={pickBtnStyle(p.sameAsMain)}
+                  >
+                    Same as main
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePassenger(p.id, { sameAsMain: false })}
+                    style={pickBtnStyle(!p.sameAsMain)}
+                  >
+                    Different points
+                  </button>
+                </div>
+                {!p.sameAsMain && (
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                  >
+                    <div>
+                      <AddressInput
+                        id={`pax-${p.id}-pickup`}
+                        placeholder="Passenger pickup address"
+                        value={p.pickup}
+                        onChange={(pt) => updatePassenger(p.id, { pickup: pt })}
+                        iconColor="#0B1E3D"
+                        savedAddresses={savedAddresses}
+                      />
+                      {data.pickup && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updatePassenger(p.id, { pickup: data.pickup })
+                          }
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fontFamily: "inherit",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#0B1E3D",
+                            padding: 0,
+                          }}
+                        >
+                          Use main pickup location
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <AddressInput
+                        id={`pax-${p.id}-dropoff`}
+                        placeholder="Passenger dropoff address"
+                        value={p.dropoff}
+                        onChange={(pt) => updatePassenger(p.id, { dropoff: pt })}
+                        iconColor="#00C2A8"
+                        savedAddresses={savedAddresses}
+                      />
+                      {data.dropoff && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updatePassenger(p.id, { dropoff: data.dropoff })
+                          }
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fontFamily: "inherit",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#00897B",
+                            padding: 0,
+                          }}
+                        >
+                          Use main dropoff location
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+          {detourExceeded && (
+            <div
+              role="alert"
+              style={{
+                fontSize: 13,
+                color: "#e74c3c",
+                background: "rgba(231,76,60,0.07)",
+                border: "1px solid rgba(231,76,60,0.2)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                marginTop: 10,
+              }}
+            >
+              ⚠ Passenger detour exceeds 25% of the base route — adjust points.
+            </div>
+          )}
         </div>
       </div>
     </div>
