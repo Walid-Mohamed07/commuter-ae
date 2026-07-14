@@ -135,6 +135,13 @@ function Detail({
   );
 }
 
+interface StationSelection {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function TripDetailPage({
@@ -167,6 +174,10 @@ export default async function TripDetailPage({
     durationMinutes: number;
     priceEgp: number;
     extraPassengers: number;
+    pickupStation?: StationSelection;
+    dropoffStation?: StationSelection;
+    walkingMinToStation?: number;
+    walkingMinFromStation?: number;
     passengers: { sameAsMain: boolean; pickup?: { address: string; lat: number; lng: number } | null; dropoff?: { address: string; lat: number; lng: number } | null }[];
     paymentStatus: string;
     status: string;
@@ -366,6 +377,20 @@ export default async function TripDetailPage({
                 label="Drive time"
                 value={`${trip.durationMinutes} min`}
               />
+              {trip.rideType === "shared" && trip.pickupStation && (
+                <Detail
+                  icon={<MapPin size={15} color="#00C2A8" />}
+                  label="Pickup station"
+                  value={`${trip.pickupStation.name} · ${trip.walkingMinToStation ?? 0} min walk`}
+                />
+              )}
+              {trip.rideType === "shared" && trip.dropoffStation && (
+                <Detail
+                  icon={<MapPin size={15} color="#E74C3C" />}
+                  label="Dropoff station"
+                  value={`${trip.dropoffStation.name} · ${trip.walkingMinFromStation ?? 0} min walk`}
+                />
+              )}
             </div>
           </div>
         </div>

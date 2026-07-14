@@ -16,6 +16,7 @@ import {
   priceFor,
   maxExtraPassengers,
   finalPrice,
+  privateRouteLegPrices,
   waitingCostEgp,
   type VehicleKey,
   type VehicleConfig,
@@ -31,10 +32,10 @@ import type { TripPoint } from "@/lib/store/useTripStore";
 import type { SavedAddress } from "@/types/shared";
 import {
   isSharedVehicle,
-  findNearestStation,
+  findNearestStations,
   haversineKm,
-  walkingMinutes,
   type Station,
+  type StationOption,
 } from "@/lib/geo/stations";
 
 export interface PassengerDetail {
@@ -55,6 +56,8 @@ export interface StopPoint {
 export interface RouteLeg {
   distanceKm: number;
   durationMinutes: number;
+  passengers?: number;
+  priceEgp?: number;
 }
 
 export interface TripData {
@@ -73,8 +76,10 @@ export interface TripData {
   numberOfPassengers: number;
   stops: StopPoint[];
   returnTrip?: boolean; // UI flag — reverse of source trip
-  pickupStation: { lat: number; lng: number; name: string } | null;
-  dropoffStation: { lat: number; lng: number; name: string } | null;
+  pickupStation: { id: number; lat: number; lng: number; name: string } | null;
+  dropoffStation: { id: number; lat: number; lng: number; name: string } | null;
+  pickupStationOptions: StationOption[];
+  dropoffStationOptions: StationOption[];
   walkingMinToStation: number | null; // walk from pickup → pickup station
   walkingMinFromStation: number | null; // walk from dropoff station → dropoff
   passengers: PassengerDetail[]; // per-extra-passenger detail (private vehicles may set distinct points)
@@ -261,6 +266,62 @@ function CounterField({
   );
 }
 
+function StationOptions({
+  label,
+  options,
+  selectedId,
+  onSelect,
+}: {
+  label: string;
+  options: StationOption[];
+  selectedId: number | undefined;
+  onSelect: (stationId: number) => void;
+}) {
+  if (!options.length) return null;
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      style={{ display: "grid", gap: 6, marginTop: 8 }}
+    >
+      {options.map((option) => {
+        const selected = option.id === selectedId;
+        return (
+          <label
+            key={option.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 10px",
+              border: `1.5px solid ${selected ? "#00C2A8" : "#e8edf0"}`,
+              borderRadius: 8,
+              background: selected ? "rgba(0,194,168,0.08)" : "#f8f9fa",
+              color: "#0B1E3D",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            <input
+              type="radio"
+              name={label}
+              value={option.id}
+              checked={selected}
+              onChange={() => onSelect(option.id)}
+              style={{ accentColor: "#00C2A8" }}
+            />
+            <strong style={{ fontSize: 13 }}>{option.name}</strong>
+            <span style={{ marginLeft: "auto", color: "#5A6A7A" }}>
+              {option.distanceKm.toFixed(2)} km · ~{option.walkingMin} min walk
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function WaitDurationInput({
   id,
   minutes,
@@ -334,6 +395,8 @@ export default function TripCycle({
         routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
+        pickupStationOptions: [],
+        dropoffStationOptions: [],
         walkingMinToStation: null,
         walkingMinFromStation: null,
         passengers: [],
@@ -357,6 +420,8 @@ export default function TripCycle({
         routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
+        pickupStationOptions: [],
+        dropoffStationOptions: [],
         walkingMinToStation: null,
         walkingMinFromStation: null,
         passengers: [],
@@ -382,6 +447,8 @@ export default function TripCycle({
         routeLegs: [],
         pickupStation: null,
         dropoffStation: null,
+        pickupStationOptions: [],
+        dropoffStationOptions: [],
         walkingMinToStation: null,
         walkingMinFromStation: null,
         baseDistanceKm: null,
@@ -395,36 +462,63 @@ export default function TripCycle({
 
     const shared = isSharedVehicle(vehicleType);
 
-    // For shared vehicles snap pickup/dropoff to nearest station
+    // For shared vehicles route through currently selected nearby stations.
     let routeFrom: TripPoint = data.pickup;
     let routeTo: TripPoint = data.dropoff;
-    let nearPickupStation: { lat: number; lng: number; name: string } | null =
-      null;
-    let nearDropoffStation: { lat: number; lng: number; name: string } | null =
-      null;
+    let selectedPickupStation: TripData["pickupStation"] = null;
+    let selectedDropoffStation: TripData["dropoffStation"] = null;
+    let pickupStationOptions: StationOption[] = [];
+    let dropoffStationOptions: StationOption[] = [];
     let walkMinToStation: number | null = null;
     let walkMinFromStation: number | null = null;
 
     if (shared && stations.length > 0) {
-      const ps = findNearestStation(data.pickup.lat, data.pickup.lng, stations);
-      const ds = findNearestStation(
+      pickupStationOptions = findNearestStations(
+        data.pickup.lat,
+        data.pickup.lng,
+        stations,
+      );
+      dropoffStationOptions = findNearestStations(
         data.dropoff.lat,
         data.dropoff.lng,
         stations,
       );
-      if (ps) {
-        nearPickupStation = { lat: ps.lat, lng: ps.lng, name: ps.name };
-        walkMinToStation = walkingMinutes(
-          haversineKm(data.pickup.lat, data.pickup.lng, ps.lat, ps.lng),
-        );
-        routeFrom = { address: ps.name, lat: ps.lat, lng: ps.lng };
+      const pickupOption =
+        pickupStationOptions.find(
+          (option) => option.id === data.pickupStation?.id,
+        ) ?? pickupStationOptions[0];
+      const dropoffOption =
+        dropoffStationOptions.find(
+          (option) => option.id === data.dropoffStation?.id,
+        ) ?? dropoffStationOptions[0];
+
+      if (pickupOption) {
+        selectedPickupStation = {
+          id: pickupOption.id,
+          lat: pickupOption.lat,
+          lng: pickupOption.lng,
+          name: pickupOption.name,
+        };
+        walkMinToStation = pickupOption.walkingMin;
+        routeFrom = {
+          address: pickupOption.name,
+          lat: pickupOption.lat,
+          lng: pickupOption.lng,
+        };
       }
-      if (ds) {
-        nearDropoffStation = { lat: ds.lat, lng: ds.lng, name: ds.name };
-        walkMinFromStation = walkingMinutes(
-          haversineKm(ds.lat, ds.lng, data.dropoff.lat, data.dropoff.lng),
-        );
-        routeTo = { address: ds.name, lat: ds.lat, lng: ds.lng };
+      if (dropoffOption) {
+        selectedDropoffStation = {
+          id: dropoffOption.id,
+          lat: dropoffOption.lat,
+          lng: dropoffOption.lng,
+          name: dropoffOption.name,
+        };
+        walkMinFromStation = dropoffOption.walkingMin;
+        routeTo = {
+          address: dropoffOption.name,
+          lat: dropoffOption.lat,
+          lng: dropoffOption.lng,
+        };
       }
     }
 
@@ -452,8 +546,10 @@ export default function TripCycle({
           priceEgp: price,
           pickupTime: pt,
           routeCoordinates: coordinates,
-          pickupStation: nearPickupStation,
-          dropoffStation: nearDropoffStation,
+          pickupStation: selectedPickupStation,
+          dropoffStation: selectedDropoffStation,
+          pickupStationOptions,
+          dropoffStationOptions,
           walkingMinToStation: walkMinToStation,
           walkingMinFromStation: walkMinFromStation,
           baseDistanceKm: distance_km,
@@ -472,6 +568,8 @@ export default function TripCycle({
     JSON.stringify(data.dropoff),
     data.vehicleType,
     stations.length,
+    data.pickupStation?.id,
+    data.dropoffStation?.id,
   ]);
 
   /* ── Private route: pickup → ordered stops → dropoff ── */
@@ -499,6 +597,8 @@ export default function TripCycle({
           routeLegs: [],
           pickupStation: null,
           dropoffStation: null,
+          pickupStationOptions: [],
+          dropoffStationOptions: [],
           walkingMinToStation: null,
           walkingMinFromStation: null,
         });
@@ -528,17 +628,31 @@ export default function TripCycle({
       .then(([routes, ...legRoutes]) => {
         if (cancelled || !routes.length) return;
         const { distance_km, duration_minutes, coordinates } = routes[0];
-        const routeLegs = legRoutes.map((legRoute) => ({
-          distanceKm: legRoute[0]?.distance_km ?? 0,
-          durationMinutes: legRoute[0]?.duration_minutes ?? 0,
-        }));
-        const basePrice = priceFor(distance_km, vehicleType, vMap);
+        let onboard = data.numberOfPassengers;
+        const routeLegs: RouteLeg[] = legRoutes.map((legRoute, legIndex) => {
+          const leg = {
+            distanceKm: legRoute[0]?.distance_km ?? 0,
+            durationMinutes: legRoute[0]?.duration_minutes ?? 0,
+            passengers: onboard,
+          };
+          const stop = data.stops[legIndex];
+          if (stop) onboard += stop.boarding - stop.alighting;
+          return leg;
+        });
+        const legPrices = privateRouteLegPrices(
+          routeLegs.map((leg) => ({
+            distanceKm: leg.distanceKm,
+            passengers: leg.passengers ?? 1,
+          })),
+          vehicleType,
+          vMap,
+        );
+        routeLegs.forEach((leg, legIndex) => {
+          leg.priceEgp = legPrices[legIndex];
+        });
         const price =
-          finalPrice(
-            basePrice,
-            Math.max(0, data.numberOfPassengers - 1),
-            vehicleType,
-          ) + waitingCostEgp(totalWaitingMinutes, vehicleType, vMap);
+          legPrices.reduce((sum, legPrice) => sum + legPrice, 0) +
+          waitingCostEgp(totalWaitingMinutes, vehicleType, vMap);
         onChange({
           ...data,
           distanceKm: distance_km,
@@ -556,6 +670,8 @@ export default function TripCycle({
           routeLegs,
           pickupStation: null,
           dropoffStation: null,
+          pickupStationOptions: [],
+          dropoffStationOptions: [],
           walkingMinToStation: null,
           walkingMinFromStation: null,
           baseDistanceKm: distance_km,
@@ -770,6 +886,36 @@ export default function TripCycle({
       stops: data.stops.map((stop) =>
         stop.id === id ? { ...stop, ...patch } : stop,
       ),
+    });
+  }
+
+  function selectStation(field: "pickup" | "dropoff", stationId: number) {
+    const options =
+      field === "pickup"
+        ? data.pickupStationOptions
+        : data.dropoffStationOptions;
+    const station = options.find((option) => option.id === stationId);
+    if (!station) return;
+
+    const selectedStation = {
+      id: station.id,
+      lat: station.lat,
+      lng: station.lng,
+      name: station.name,
+    };
+    onChange({
+      ...data,
+      pickupStation: field === "pickup" ? selectedStation : data.pickupStation,
+      dropoffStation:
+        field === "dropoff" ? selectedStation : data.dropoffStation,
+      distanceKm: null,
+      durationMinutes: null,
+      priceEgp: null,
+      pickupTime: "",
+      routeCoordinates: null,
+      routeLegs: [],
+      baseDistanceKm: null,
+      passengerDetourKm: null,
     });
   }
 
@@ -1080,6 +1226,12 @@ export default function TripCycle({
                     </span>
                   </div>
                 )}
+              <StationOptions
+                label={`Pickup station for trip ${index + 1}`}
+                options={data.pickupStationOptions}
+                selectedId={data.pickupStation?.id}
+                onSelect={(stationId) => selectStation("pickup", stationId)}
+              />
             </div>
 
             {/* Dropoff */}
@@ -1148,6 +1300,12 @@ export default function TripCycle({
                     </span>
                   </div>
                 )}
+              <StationOptions
+                label={`Dropoff station for trip ${index + 1}`}
+                options={data.dropoffStationOptions}
+                selectedId={data.dropoffStation?.id}
+                onSelect={(stationId) => selectStation("dropoff", stationId)}
+              />
               {locationError && (
                 <div
                   role="alert"

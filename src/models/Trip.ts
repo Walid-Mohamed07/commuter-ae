@@ -20,9 +20,22 @@ const PassengerDetailSchema = new Schema(
 
 const StationSchema = new Schema(
   {
+    id: { type: Number, required: true },
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
     name: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const StationOptionSchema = new Schema(
+  {
+    id: { type: Number, required: true },
+    name: { type: String, required: true },
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    distanceKm: { type: Number, required: true, min: 0 },
+    walkingMin: { type: Number, required: true, min: 0 },
   },
   { _id: false },
 );
@@ -73,6 +86,8 @@ const TripSchema = new Schema(
     stops: { type: [StopSchema], default: [] },
     pickupStation: { type: StationSchema, required: false },
     dropoffStation: { type: StationSchema, required: false },
+    pickupStationOptions: { type: [StationOptionSchema], default: [] },
+    dropoffStationOptions: { type: [StationOptionSchema], default: [] },
     walkingMinToStation: { type: Number, min: 0 },
     walkingMinFromStation: { type: Number, min: 0 },
     paymentStatus: {

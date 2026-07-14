@@ -3,11 +3,13 @@ import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Request } from "@/models/Request";
 import { Trip } from "@/models/Trip";
+import { Station } from "@/models/Station";
 import {
   VEHICLES,
   priceFor,
   maxExtraPassengers,
   finalPrice,
+  privateRoutePrice,
   waitingCostEgp,
 } from "@/lib/config/vehicles";
 import {
@@ -17,6 +19,7 @@ import {
 import { isDateInWindow } from "@/lib/time/bookingDates";
 import { getVehicles } from "@/lib/db/getVehicles";
 import { fetchDirections } from "@/app/api/directions/route";
+import { findNearestStations, type StationOption } from "@/lib/geo/stations";
 import { Types } from "mongoose";
 
 interface PassengerInput {
@@ -44,8 +47,10 @@ interface TripInput {
   passengers?: PassengerInput[];
   numberOfPassengers?: number;
   stops?: StopInput[];
-  pickupStation?: { lat: number; lng: number; name: string };
-  dropoffStation?: { lat: number; lng: number; name: string };
+  pickupStation?: { id: number; lat: number; lng: number; name: string };
+  dropoffStation?: { id: number; lat: number; lng: number; name: string };
+  pickupStationOptions?: StationOption[];
+  dropoffStationOptions?: StationOption[];
   walkingMinToStation?: number;
   walkingMinFromStation?: number;
 }
@@ -122,8 +127,10 @@ export async function POST(req: NextRequest) {
       pickup: { address: string; lat: number; lng: number } | null;
       dropoff: { address: string; lat: number; lng: number } | null;
     }[];
-    pickupStation?: { lat: number; lng: number; name: string };
-    dropoffStation?: { lat: number; lng: number; name: string } | null;
+    pickupStation?: { id: number; lat: number; lng: number; name: string };
+    dropoffStation?: { id: number; lat: number; lng: number; name: string };
+    pickupStationOptions?: StationOption[];
+    dropoffStationOptions?: StationOption[];
     walkingMinToStation?: number;
     walkingMinFromStation?: number;
   }
@@ -239,11 +246,15 @@ export async function POST(req: NextRequest) {
             },
       );
 
-      let route = await fetchServerRoute([
+      const privateRoutePoints = [
         t.pickup,
         ...stops.map((stop) => stop.point),
         t.dropoff,
-      ]);
+      ];
+      let route = await fetchServerRoute(privateRoutePoints);
+      let fareLegs = [
+        { distanceKm: route?.distanceKm ?? 0, passengers: numberOfPassengers },
+      ];
       if (distinctPassengers.length > 0) {
         const baseRoute = await fetchServerRoute([t.pickup, t.dropoff]);
         const detourRoute = await fetchServerRoute([
@@ -265,12 +276,41 @@ export async function POST(req: NextRequest) {
           );
         }
         route = detourRoute;
+        fareLegs = [
+          { distanceKm: detourRoute.distanceKm, passengers: numberOfPassengers },
+        ];
       }
       if (!route) {
         return NextResponse.json(
           { error: "Failed to compute route" },
           { status: 502 },
         );
+      }
+
+      if (stops.length > 0) {
+        const legRoutes = await Promise.all(
+          privateRoutePoints
+            .slice(0, -1)
+            .map((point, index) =>
+              fetchServerRoute([point, privateRoutePoints[index + 1]]),
+            ),
+        );
+        if (legRoutes.some((legRoute) => !legRoute)) {
+          return NextResponse.json(
+            { error: "Failed to compute route" },
+            { status: 502 },
+          );
+        }
+        let passengers = numberOfPassengers;
+        fareLegs = legRoutes.map((legRoute, index) => {
+          const fareLeg = {
+            distanceKm: legRoute!.distanceKm,
+            passengers,
+          };
+          const stop = stops[index];
+          if (stop) passengers += stop.boarding - stop.alighting;
+          return fareLeg;
+        });
       }
 
       const totalWaitingMinutes = stops.reduce(
@@ -283,9 +323,8 @@ export async function POST(req: NextRequest) {
         totalWaitingMinutes,
         10,
       );
-      const basePrice = priceFor(route.distanceKm, vKey, vehiclesMap);
       const priceEgp =
-        finalPrice(basePrice, numberOfPassengers - 1, vKey) +
+        privateRoutePrice(fareLegs, vKey, vehiclesMap) +
         waitingCostEgp(totalWaitingMinutes, vKey, vehiclesMap);
 
       serverTrips.push({
@@ -312,75 +351,73 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const distKm = Number(t.distanceKm);
-    const durMin = Number(t.durationMinutes);
-    if (!isFinite(distKm) || distKm <= 0 || !isFinite(durMin) || durMin <= 0) {
+    if (
+      !Number.isInteger(t.pickupStation?.id) ||
+      !Number.isInteger(t.dropoffStation?.id)
+    ) {
       return NextResponse.json(
-        { error: "Invalid route data" },
+        { error: "Invalid station selection" },
         { status: 400 },
       );
     }
 
-    // Passenger detour (private vehicles only) — server-recompute combined distance
-    let effectiveDistKm = distKm;
-    let effectiveDurMin = durMin;
-    const distinctPassengers = isShared
-      ? []
-      : (t.passengers ?? []).filter(
-          (p) => !p.sameAsMain && p.pickup && p.dropoff,
-        );
-    const serverPassengers = isShared
-      ? []
-      : (t.passengers ?? []).map((p) =>
-          p.sameAsMain || !p.pickup || !p.dropoff
-            ? { sameAsMain: true, pickup: null, dropoff: null }
-            : { sameAsMain: false, pickup: p.pickup, dropoff: p.dropoff },
-        );
-
-    if (distinctPassengers.length > 0) {
-      const base = await fetchServerRoute([t.pickup, t.dropoff]);
-      const waypoints = [
-        t.pickup,
-        ...distinctPassengers.map((p) => p.pickup!),
-        ...distinctPassengers.map((p) => p.dropoff!),
-        t.dropoff,
-      ];
-      const combined = await fetchServerRoute(waypoints);
-      if (!base || !combined) {
-        return NextResponse.json(
-          { error: "Failed to compute passenger detour route." },
-          { status: 502 },
-        );
-      }
-      if (combined.distanceKm > base.distanceKm * 1.25) {
-        return NextResponse.json(
-          { error: "Detour exceeds 25%" },
-          { status: 400 },
-        );
-      }
-      effectiveDistKm = combined.distanceKm;
-      effectiveDurMin = combined.durationMinutes;
+    await connectDB();
+    const stations = await Station.find({ active: true }).lean();
+    const canonicalStations = stations.map((station) => ({
+      id: station.objectId,
+      name: station.name || station.direction || "",
+      lat: station.lat,
+      lng: station.lng,
+      popupInfo: [station.direction, station.landmark, station.stationType]
+        .filter(Boolean)
+        .join("\n"),
+    }));
+    const pickupStationOptions = findNearestStations(
+      t.pickup.lat,
+      t.pickup.lng,
+      canonicalStations,
+    );
+    const dropoffStationOptions = findNearestStations(
+      t.dropoff.lat,
+      t.dropoff.lng,
+      canonicalStations,
+    );
+    const selectedPickup = pickupStationOptions.find(
+      (station) => station.id === t.pickupStation!.id,
+    );
+    const selectedDropoff = dropoffStationOptions.find(
+      (station) => station.id === t.dropoffStation!.id,
+    );
+    if (!selectedPickup || !selectedDropoff) {
+      return NextResponse.json(
+        { error: "Invalid station selection" },
+        { status: 400 },
+      );
     }
 
-    // Server-side recompute — never trust client values
-    const rideType = vehicle.ride;
-    // For shared: add walk-from-station time so pickup_time accounts for it
-    const extraWalk =
-      isShared && typeof t.walkingMinFromStation === "number"
-        ? Math.max(0, Math.round(t.walkingMinFromStation))
-        : 0;
+    const route = await fetchServerRoute([selectedPickup, selectedDropoff]);
+    if (!route) {
+      return NextResponse.json(
+        { error: "Failed to compute route" },
+        { status: 502 },
+      );
+    }
+
     const pickupTime = computePickupTime(
       t.arrivalTime,
-      Math.round(effectiveDurMin) + extraWalk,
+      Math.round(route.durationMinutes) + selectedDropoff.walkingMin,
       vKey,
       vehiclesMap,
     );
-    const basePrice = priceFor(effectiveDistKm, vKey, vehiclesMap);
     const extraPax = Math.min(
       maxExtraPassengers(vKey),
       Math.max(0, Math.round(Number(t.extraPassengers ?? 0))),
     );
-    const priceEgp = finalPrice(basePrice, extraPax, vKey);
+    const priceEgp = finalPrice(
+      priceFor(route.distanceKm, vKey, vehiclesMap),
+      extraPax,
+      vKey,
+    );
 
     serverTrips.push({
       pickup: {
@@ -394,30 +431,32 @@ export async function POST(req: NextRequest) {
         lng: t.dropoff.lng,
       },
       vehicleType: vKey,
-      rideType,
+      rideType: vehicle.ride,
       arrivalTime: t.arrivalTime,
       pickupTime,
-      distanceKm: effectiveDistKm,
-      durationMinutes: Math.round(effectiveDurMin),
+      distanceKm: route.distanceKm,
+      durationMinutes: Math.round(route.durationMinutes),
       priceEgp,
       extraPassengers: extraPax,
       numberOfPassengers: 1,
       stops: [],
-      passengers: serverPassengers,
-      ...(isShared && t.pickupStation
-        ? {
-            pickupStation: t.pickupStation,
-            dropoffStation: t.dropoffStation ?? null,
-            walkingMinToStation: Math.max(
-              0,
-              Math.round(t.walkingMinToStation ?? 0),
-            ),
-            walkingMinFromStation: Math.max(
-              0,
-              Math.round(t.walkingMinFromStation ?? 0),
-            ),
-          }
-        : {}),
+      passengers: [],
+      pickupStation: {
+        id: selectedPickup.id,
+        name: selectedPickup.name,
+        lat: selectedPickup.lat,
+        lng: selectedPickup.lng,
+      },
+      dropoffStation: {
+        id: selectedDropoff.id,
+        name: selectedDropoff.name,
+        lat: selectedDropoff.lat,
+        lng: selectedDropoff.lng,
+      },
+      pickupStationOptions,
+      dropoffStationOptions,
+      walkingMinToStation: selectedPickup.walkingMin,
+      walkingMinFromStation: selectedDropoff.walkingMin,
     });
   }
 
