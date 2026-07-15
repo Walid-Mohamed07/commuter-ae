@@ -52,6 +52,8 @@ function defaultTrip(
     stops: [],
     pickupStation: null,
     dropoffStation: null,
+    pickupStationOptions: [],
+    dropoffStationOptions: [],
     walkingMinToStation: null,
     walkingMinFromStation: null,
     passengers: [],
@@ -188,6 +190,8 @@ export default function CreateClient({ userEmail }: Props) {
               ? {
                   pickupStation: t.pickupStation,
                   dropoffStation: t.dropoffStation,
+                  pickupStationOptions: t.pickupStationOptions,
+                  dropoffStationOptions: t.dropoffStationOptions,
                   walkingMinToStation: t.walkingMinToStation,
                   walkingMinFromStation: t.walkingMinFromStation,
                 }
@@ -283,6 +287,8 @@ export default function CreateClient({ userEmail }: Props) {
                 routeLegs: [],
                 pickupStation: null,
                 dropoffStation: null,
+                pickupStationOptions: [],
+                dropoffStationOptions: [],
                 walkingMinToStation: null,
                 walkingMinFromStation: null,
                 passengers: [],
@@ -920,6 +926,23 @@ export default function CreateClient({ userEmail }: Props) {
                                 >
                                   <Route size={13} aria-hidden="true" />
                                   To {routePoints[pointIndex + 1].label}: {leg.distanceKm} km · {leg.durationMinutes} min
+                                  {leg.passengers != null &&
+                                    ` · ${leg.passengers} passenger${leg.passengers === 1 ? "" : "s"}`}
+                                  {leg.priceEgp != null && ` · ${leg.priceEgp} EGP`}
+                                </span>
+                              )}
+                              {t.stops[pointIndex - 1] && (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    margin: "4px 0 0 23px",
+                                    fontSize: 12,
+                                    color: "#5A6A7A",
+                                  }}
+                                >
+                                  Alighting: {t.stops[pointIndex - 1].alighting} · Boarding: {t.stops[pointIndex - 1].boarding}
+                                  {t.stops[pointIndex - 1].waitingMinutes > 0 &&
+                                    ` · Wait: ${t.stops[pointIndex - 1].waitingMinutes} min`}
                                 </span>
                               )}
                             </div>

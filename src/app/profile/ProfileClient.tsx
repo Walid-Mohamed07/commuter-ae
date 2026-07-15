@@ -496,7 +496,7 @@ export default function ProfileClient({
             }}
           >
             My requests →
-          </Link>
+          </Link> */}
           <Link
             href="/create"
             style={{

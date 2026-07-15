@@ -83,7 +83,7 @@ export function priceFor(
   key: VehicleKey,
   vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
 ): number {
-  return Math.round(distanceKm * vehiclesMap[key].rate);
+  return Math.round(vehiclesMap[key].rate * Math.pow(distanceKm, 0.8));
 }
 
 /** Private-ride wait charge: each 60 minutes costs 50 km at 50% of vehicle rate. */
@@ -121,9 +121,9 @@ export function finalPrice(
   const r = (factor: number) => Math.round(basePrice + basePrice * factor);
 
   if (vehicleType === "private_car" || vehicleType === "taxi_private") {
-    if (n === 1) return r(0.25);
-    if (n === 2) return r(0.5);
-    if (n === 3) return r(0.75);
+    if (n === 1) return r(0.1);
+    if (n === 2) return r(0.2);
+    if (n === 3) return r(0.3);
     return basePrice;
   }
 
@@ -155,4 +155,43 @@ export function finalPrice(
   }
 
   return basePrice;
+}
+
+export interface PrivateFareLeg {
+  distanceKm: number;
+  passengers: number;
+}
+
+/** Split route base fare by distance, then apply private passenger pricing per leg. */
+export function privateRouteLegPrices(
+  legs: PrivateFareLeg[],
+  key: VehicleKey,
+  vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
+): number[] {
+  const totalDistanceKm = legs.reduce(
+    (sum, leg) => sum + Math.max(0, leg.distanceKm),
+    0,
+  );
+  if (totalDistanceKm <= 0) return legs.map(() => 0);
+
+  const baseRoutePrice = priceFor(totalDistanceKm, key, vehiclesMap);
+  return legs.map((leg) => {
+    const legBasePrice = (baseRoutePrice * Math.max(0, leg.distanceKm)) / totalDistanceKm;
+    return finalPrice(
+      legBasePrice,
+      Math.max(0, Math.round(leg.passengers) - 1),
+      key,
+    );
+  });
+}
+
+export function privateRoutePrice(
+  legs: PrivateFareLeg[],
+  key: VehicleKey,
+  vehiclesMap: Record<VehicleKey, VehicleConfig> = VEHICLES,
+): number {
+  return privateRouteLegPrices(legs, key, vehiclesMap).reduce(
+    (sum, price) => sum + price,
+    0,
+  );
 }
