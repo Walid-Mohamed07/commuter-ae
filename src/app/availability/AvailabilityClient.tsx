@@ -20,12 +20,7 @@ import AddressInput from "@/components/landing/AddressInput";
 import AvailabilityMap from "@/components/availability/AvailabilityMap";
 import type { TripPoint } from "@/lib/store/useTripStore";
 import type { SavedAddress } from "@/types/shared";
-
-interface Point {
-  address: string;
-  lat: number;
-  lng: number;
-}
+import type { GeoPoint as Point } from "@/types/geo";
 
 interface AvailabilityRecord {
   _id: string;

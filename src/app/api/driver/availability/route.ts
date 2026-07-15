@@ -3,12 +3,8 @@ import { connectDB } from "@/lib/db/mongoose";
 import { Availability } from "@/models/Availability";
 import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
-
-interface Point {
-  address: string;
-  lat: number;
-  lng: number;
-}
+import type { GeoPoint as Point } from "@/types/geo";
+import { listDriverAvailability } from "@/lib/services/availability";
 
 function isValidPoint(p: unknown): p is Point {
   const point = p as Point;
@@ -30,11 +26,8 @@ export async function GET() {
   if (!session || session.role !== "driver")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await connectDB();
-  const records = await Availability.find({ driverId: session.userId })
-    .sort({ date: 1 })
-    .lean();
-  return NextResponse.json({ records });
+  const records = await listDriverAvailability(session.userId);
+  return NextResponse.json({ data: records });
 }
 
 export async function POST(req: NextRequest) {

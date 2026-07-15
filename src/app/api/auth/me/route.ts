@@ -4,28 +4,18 @@ import { User } from "@/models/User";
 import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
 import { carTypeToCapacity, type CarType } from "@/lib/config/driver";
+import { getProfile } from "@/lib/services/profile";
 
 export async function GET() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await connectDB();
-  const user = await User.findById(session.userId)
-    .select("name email phone role profilePic")
-    .lean();
-  if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const profile = await getProfile(session.userId, session.role);
+  if (!profile)
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  if (session.role !== "driver") return NextResponse.json(user);
-
-  const driver = await Driver.findOne({ userId: session.userId }).lean();
-  if (!driver)
-    return NextResponse.json(
-      { error: "Driver profile not found." },
-      { status: 404 },
-    );
-
-  return NextResponse.json({ ...user, driver });
+  return NextResponse.json({ data: profile });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -35,21 +25,16 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, phone, profilePic } = body;
+    const { name, phone } = body;
     if (!name?.trim())
       return NextResponse.json({ error: "Name is required." }, { status: 400 });
 
     await connectDB();
-    const update: Record<string, unknown> = {
-      name: name.trim(),
-      phone: phone?.trim() || undefined,
-    };
-    if (typeof profilePic === "string") update.profilePic = profilePic;
-
-    const user = await User.findByIdAndUpdate(session.userId, update, {
-      new: true,
-      select: "name email phone role profilePic",
-    }).lean();
+    const user = await User.findByIdAndUpdate(
+      session.userId,
+      { name: name.trim(), phone: phone?.trim() || undefined },
+      { new: true, select: "name email phone role" },
+    ).lean();
 
     if (!user)
       return NextResponse.json({ error: "User not found." }, { status: 404 });
@@ -59,19 +44,12 @@ export async function PATCH(req: NextRequest) {
     const {
       gender,
       carType,
-      carBrand,
-      carModel,
-      modelYear,
+      vehicleName,
       vehicleColor,
-      plateChar1,
-      plateChar2,
-      plateChar3,
-      plateDigits,
+      licensePlate,
       licenseExpiry,
       documents,
     } = body;
-
-    const ARABIC_CHAR = /^[\u0600-\u06FF]$/;
 
     const driverUpdate: Record<string, unknown> = {};
     if (gender === "male" || gender === "female") driverUpdate.gender = gender;
@@ -80,15 +58,9 @@ export async function PATCH(req: NextRequest) {
       // Server-authoritative capacity — never trust client input.
       driverUpdate.carCapacity = carTypeToCapacity(carType as CarType);
     }
-    if (carBrand?.trim()) driverUpdate.carBrand = carBrand.trim();
-    if (carModel?.trim()) driverUpdate.carModel = carModel.trim();
-    if (Number.isInteger(modelYear) && modelYear > 1900 && modelYear < 2100)
-      driverUpdate.modelYear = modelYear;
+    if (vehicleName?.trim()) driverUpdate.vehicleName = vehicleName.trim();
     if (vehicleColor?.trim()) driverUpdate.vehicleColor = vehicleColor.trim();
-    if (ARABIC_CHAR.test(plateChar1)) driverUpdate.plateChar1 = plateChar1;
-    if (ARABIC_CHAR.test(plateChar2)) driverUpdate.plateChar2 = plateChar2;
-    if (ARABIC_CHAR.test(plateChar3)) driverUpdate.plateChar3 = plateChar3;
-    if (/^\d{4}$/.test(plateDigits)) driverUpdate.plateDigits = plateDigits;
+    if (licensePlate?.trim()) driverUpdate.licensePlate = licensePlate.trim();
     if (licenseExpiry?.trim())
       driverUpdate.licenseExpiry = licenseExpiry.trim();
 
@@ -99,8 +71,6 @@ export async function PATCH(req: NextRequest) {
       "carLicenseFront",
       "carLicenseBack",
       "criminalRecord",
-      "profilePic",
-      "carImage",
     ];
     if (documents && typeof documents === "object") {
       for (const key of ALLOWED_DOC_KEYS) {

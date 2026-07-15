@@ -2,8 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCircle, Clock, XCircle, ArrowRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Request } from "@/models/Request";
+import { getBookingStatus } from "@/lib/services/booking-status";
 import { Types } from "mongoose";
 import { verifyAndSettleBooking } from "@/lib/payments/kashier";
 
@@ -35,18 +34,7 @@ export default async function CallbackPage({
   // Don't rely on the webhook alone (may be delayed or fail to deliver).
   await verifyAndSettleBooking(bookingId, session.userId);
 
-  await connectDB();
-  const booking = await Request.findOne({
-    _id: bookingId,
-    userId: new Types.ObjectId(session.userId),
-  })
-    .select("paymentStatus amountEgp status dates")
-    .lean<{
-      paymentStatus: string;
-      amountEgp: number;
-      status: string;
-      dates: string[];
-    }>();
+  const booking = await getBookingStatus(session.userId, bookingId);
 
   if (!booking) redirect("/my-requests");
 

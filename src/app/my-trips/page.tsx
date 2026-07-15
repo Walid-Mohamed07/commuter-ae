@@ -1,12 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Types } from "mongoose";
 import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Trip } from "@/models/Trip";
-import { Request as RequestModel } from "@/models/Request";
-import { getOrCreateWallet } from "@/lib/wallet/wallet";
+import { listUserTrips } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
@@ -14,7 +10,8 @@ import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
 import DateRangeCalendar from "@/components/shared/DateRangeCalendar";
 import Pagination from "@/components/shared/Pagination";
-import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
+import RouteMap from "@/components/shared/RouteMap";
+import type { PaymentStatus } from "@/types/booking";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -41,17 +38,6 @@ function prettyDate(date: string): string {
     day: "numeric",
   });
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -157,30 +143,6 @@ const HISTORY_OPTIONS: FilterDef = {
 
 // ── shape ────────────────────────────────────────────────────────────────────
 
-interface LatLng {
-  lat: number;
-  lng: number;
-}
-
-interface TripRow {
-  id: string;
-  requestId: string;
-  date: string;
-  paymentStatus: PaymentStatus;
-  status: BookingStatus;
-  vehicleType: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  pickup: LatLng | null;
-  dropoff: LatLng | null;
-  pickupTime: string;
-  arrivalTime: string;
-  priceEgp: number;
-  distanceKm: number;
-  bookingAmountEgp: number;
-  createdAt: string;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function MyTripsPage({
@@ -245,125 +207,15 @@ export default async function MyTripsPage({
     typeof params.dateTo === "string" ? params.dateTo : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  await connectDB();
-
-  const tripMatch: Record<string, unknown> = {
-    userId: new Types.ObjectId(session.userId),
-  };
-  if (payment && payment in PAY_PILL) tripMatch.paymentStatus = payment;
-  if (vehicle && vehicle in VEHICLES) tripMatch.vehicleType = vehicle;
-  if (dateFrom || dateTo) {
-    const dateRange: Record<string, string> = {};
-    if (dateFrom) dateRange.$gte = dateFrom;
-    if (dateTo) dateRange.$lte = dateTo;
-    tripMatch.date = dateRange;
-  }
-  if (historyFilter && (HISTORY_STATUSES as string[]).includes(historyFilter)) {
-    tripMatch.status = historyFilter;
-  } else if (statusFilter && statusFilter in STATUS_PILL) {
-    tripMatch.status = statusFilter;
-  } else {
-    tripMatch.status = { $nin: DEFAULT_HIDDEN_STATUSES };
-  }
-
-  const allMatched = await Trip.find(tripMatch)
-    .lean<
-      {
-        _id: unknown;
-        requestId: unknown;
-        date: string;
-        paymentStatus: string;
-        status: string;
-        vehicleType: string;
-        pickup: { address: string; lat: number; lng: number };
-        dropoff: { address: string; lat: number; lng: number };
-        pickupTime: string;
-        arrivalTime: string;
-        priceEgp: number;
-        distanceKm: number;
-        createdAt: Date | string;
-      }[]
-    >();
-
-  const total = allMatched.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // ── sort: upcoming/today first (ascending), then past (descending);
-  // within today, nearest to current time first ─────────────────────────────
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-  function toMinutes(hhmm: string): number {
-    const [h, m] = (hhmm || "0:0").split(":").map(Number);
-    return h * 60 + m;
-  }
-
-  const sorted = [...allMatched].sort((a, b) => {
-    const aFuture = a.date >= todayStr;
-    const bFuture = b.date >= todayStr;
-    if (aFuture !== bFuture) return aFuture ? -1 : 1;
-
-    if (aFuture) {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      if (a.date === todayStr) {
-        return (
-          Math.abs(toMinutes(a.pickupTime) - nowMinutes) -
-          Math.abs(toMinutes(b.pickupTime) - nowMinutes)
-        );
-      }
-      return toMinutes(a.pickupTime) - toMinutes(b.pickupTime);
-    }
-
-    if (a.date !== b.date) return a.date > b.date ? -1 : 1;
-    return toMinutes(a.pickupTime) - toMinutes(b.pickupTime);
+  const result = await listUserTrips(session.userId, {
+    page,
+    pageSize: PAGE_SIZE,
+    paymentStatus:
+      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
+    vehicleType: vehicle && vehicle in VEHICLES ? vehicle : undefined,
   });
-
-  const pageTrips = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  // Fetch parent booking amounts for the Continue-to-checkout action.
-  const requestIds = Array.from(
-    new Set(pageTrips.map((t) => String(t.requestId))),
-  );
-  const requestDocs = await RequestModel.find({
-    _id: { $in: requestIds },
-  })
-    .select("amountEgp")
-    .lean<{ _id: unknown; amountEgp: number }[]>();
-  const amountByRequest = new Map(
-    requestDocs.map((r) => [String(r._id), r.amountEgp]),
-  );
-
-  const wallet = await getOrCreateWallet(session.userId);
-  const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const trips: TripRow[] = pageTrips.map((r) => ({
-    id: String(r._id),
-    requestId: String(r.requestId),
-    date: r.date,
-    paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
-    status: (r.status as BookingStatus) ?? "pending_payment",
-    vehicleType: r.vehicleType,
-    pickupAddress: r.pickup?.address ?? "—",
-    dropoffAddress: r.dropoff?.address ?? "—",
-    pickup:
-      typeof r.pickup?.lat === "number"
-        ? { lat: r.pickup.lat, lng: r.pickup.lng }
-        : null,
-    dropoff:
-      typeof r.dropoff?.lat === "number"
-        ? { lat: r.dropoff.lat, lng: r.dropoff.lng }
-        : null,
-    pickupTime: r.pickupTime,
-    arrivalTime: r.arrivalTime,
-    priceEgp: r.priceEgp,
-    distanceKm: r.distanceKm,
-    bookingAmountEgp: amountByRequest.get(String(r.requestId)) ?? r.priceEgp,
-    createdAt:
-      r.createdAt instanceof Date
-        ? r.createdAt.toISOString()
-        : String(r.createdAt),
-  }));
+  const { rows: trips, total } = result;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   // Group consecutive trips by day (order already sorted above).
   const dayGroups: { date: string; trips: TripRow[] }[] = [];
