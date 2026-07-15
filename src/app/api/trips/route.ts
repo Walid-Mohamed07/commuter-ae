@@ -12,48 +12,15 @@ import {
   privateRoutePrice,
   waitingCostEgp,
 } from "@/lib/config/vehicles";
-import {
-  computeArrivalTime,
-  computePickupTime,
-} from "@/lib/time/pickupWindow";
+import { computeArrivalTime, computePickupTime } from "@/lib/time/pickupWindow";
 import { isDateInWindow } from "@/lib/time/bookingDates";
 import { getVehicles } from "@/lib/db/getVehicles";
 import { fetchDirections } from "@/app/api/directions/route";
 import { findNearestStations, type StationOption } from "@/lib/geo/stations";
+import type { StopInput, TripInput } from "@/types/forms";
+import type { PaymentStatus } from "@/types/booking";
+import { listUserTrips } from "@/lib/services/trips";
 import { Types } from "mongoose";
-
-interface PassengerInput {
-  sameAsMain: boolean;
-  pickup?: { address: string; lat: number; lng: number } | null;
-  dropoff?: { address: string; lat: number; lng: number } | null;
-}
-
-interface StopInput {
-  point: { address: string; lat: number; lng: number };
-  alighting: number;
-  boarding: number;
-  waitingMinutes: number;
-}
-
-interface TripInput {
-  pickup: { address: string; lat: number; lng: number };
-  dropoff: { address: string; lat: number; lng: number };
-  vehicleType: string;
-  arrivalTime?: string;
-  pickupTime?: string;
-  distanceKm: number;
-  durationMinutes: number;
-  extraPassengers?: number;
-  passengers?: PassengerInput[];
-  numberOfPassengers?: number;
-  stops?: StopInput[];
-  pickupStation?: { id: number; lat: number; lng: number; name: string };
-  dropoffStation?: { id: number; lat: number; lng: number; name: string };
-  pickupStationOptions?: StationOption[];
-  dropoffStationOptions?: StationOption[];
-  walkingMinToStation?: number;
-  walkingMinFromStation?: number;
-}
 
 /** Fetch total distance/duration for an origin→...waypoints...→dest route directly from Google (no internal HTTP hop). */
 async function fetchServerRoute(
@@ -71,6 +38,50 @@ async function fetchServerRoute(
     distanceKm: data[0].distance_km,
     durationMinutes: data[0].duration_minutes,
   };
+}
+
+const PAYMENT_STATUSES = new Set<PaymentStatus>([
+  "pending",
+  "paid",
+  "failed",
+  "refunded",
+  "expired",
+]);
+
+export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const requestedPage = Number(searchParams.get("page") ?? "1");
+  const page =
+    Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const payment = searchParams.get("paymentStatus");
+  const vehicleType = searchParams.get("vehicleType");
+
+  if (payment && !PAYMENT_STATUSES.has(payment as PaymentStatus)) {
+    return NextResponse.json(
+      { error: "Invalid paymentStatus" },
+      { status: 400 },
+    );
+  }
+  if (vehicleType && !(vehicleType in VEHICLES)) {
+    return NextResponse.json({ error: "Invalid vehicleType" }, { status: 400 });
+  }
+
+  const result = await listUserTrips(session.userId, {
+    page,
+    paymentStatus: payment as PaymentStatus | undefined,
+    vehicleType: vehicleType ?? undefined,
+  });
+  return NextResponse.json({
+    data: result.rows,
+    page: result.page,
+    pageSize: 12,
+    total: result.total,
+    totalPages: Math.ceil(result.total / 12),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -155,10 +166,7 @@ export async function POST(req: NextRequest) {
     const isShared = vehicle.ride === "shared";
 
     if (!isShared) {
-      if (
-        !t.pickupTime ||
-        !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(t.pickupTime)
-      ) {
+      if (!t.pickupTime || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(t.pickupTime)) {
         return NextResponse.json(
           { error: "Invalid pickupTime" },
           { status: 400 },
@@ -195,10 +203,7 @@ export async function POST(req: NextRequest) {
           stop.boarding < 0 ||
           stop.waitingMinutes < 0
         ) {
-          return NextResponse.json(
-            { error: "Invalid stop" },
-            { status: 400 },
-          );
+          return NextResponse.json({ error: "Invalid stop" }, { status: 400 });
         }
         if (stop.alighting > onboard - 1) {
           return NextResponse.json(
@@ -277,7 +282,10 @@ export async function POST(req: NextRequest) {
         }
         route = detourRoute;
         fareLegs = [
-          { distanceKm: detourRoute.distanceKm, passengers: numberOfPassengers },
+          {
+            distanceKm: detourRoute.distanceKm,
+            passengers: numberOfPassengers,
+          },
         ];
       }
       if (!route) {

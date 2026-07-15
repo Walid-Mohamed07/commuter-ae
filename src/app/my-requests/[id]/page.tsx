@@ -1,5 +1,4 @@
 import { redirect, notFound } from "next/navigation";
-import { Types } from "mongoose";
 import {
   Car,
   MapPin,
@@ -10,15 +9,14 @@ import {
   Notebook,
 } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Request } from "@/models/Request";
-import { Trip } from "@/models/Trip";
+import { expireStaleRequest, getUserRequest } from "@/lib/services/requests";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import RouteMap from "@/components/shared/RouteMap";
 import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
-import { getOrCreateWallet } from "@/lib/wallet/wallet";
+import type { GeoPoint as Pt, StationSelection } from "@/types/geo";
+import type { PaymentStatus, BookingStatus } from "@/types/booking";
 
 export const metadata = { title: "Request details — Commuter" };
 export const dynamic = "force-dynamic";
@@ -40,17 +38,6 @@ function prettyDate(date: string): string {
     day: "numeric",
   });
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -109,19 +96,6 @@ function Pill({
   );
 }
 
-interface Pt {
-  address: string;
-  lat: number;
-  lng: number;
-}
-
-interface StationSelection {
-  id: number;
-  name: string;
-  lat: number;
-  lng: number;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function RequestDetailPage({
@@ -132,77 +106,12 @@ export default async function RequestDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-requests/${id}`);
-  if (!Types.ObjectId.isValid(id)) notFound();
+  await expireStaleRequest(id, session.userId);
+  const detail = await getUserRequest(session.userId, id);
+  if (!detail) notFound();
 
-  await connectDB();
-
-  // Lazy-expire this request if still pending after 2 h
-  await Request.updateOne(
-    {
-      _id: id,
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-  await Trip.updateMany(
-    {
-      requestId: id,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
-  const [b, rawTrips, wallet] = await Promise.all([
-    Request.findOne({
-      _id: id,
-      userId: session.userId,
-    }).lean<Record<string, unknown>>(),
-    Trip.find({ requestId: id, userId: new Types.ObjectId(session.userId) })
-      .sort({ date: 1, cycleIndex: 1 })
-      .lean<
-        {
-          date: string;
-          cycleIndex: number;
-          pickup: Pt;
-          dropoff: Pt;
-          vehicleType: string;
-          rideType: string;
-          arrivalTime: string;
-          pickupTime: string;
-          distanceKm: number;
-          durationMinutes: number;
-          priceEgp: number;
-          extraPassengers: number;
-          pickupStation?: StationSelection;
-          dropoffStation?: StationSelection;
-          walkingMinToStation?: number;
-          walkingMinFromStation?: number;
-        }[]
-      >(),
-    getOrCreateWallet(session.userId),
-  ]);
-
-  if (!b) notFound();
-
-  const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const dates = (b.dates as string[]) ?? [];
-  const amountEgp = b.amountEgp as number;
-  const paymentStatus = (b.paymentStatus as PaymentStatus) ?? "pending";
-  const status = (b.status as BookingStatus) ?? "pending_payment";
-  const createdAt =
-    b.createdAt instanceof Date
-      ? b.createdAt.toISOString()
-      : String(b.createdAt);
+  const { request, trips: rawTrips, walletBalance } = detail;
+  const { dates, amountEgp, paymentStatus, status, createdAt } = request;
   // Group materialized trips by date for detail display
   const tripsByDate = new Map<
     string,
@@ -225,7 +134,7 @@ export default async function RequestDetailPage({
       walkingMinFromStation?: number;
     }[]
   >();
-  for (const t of rawTrips ?? []) {
+  for (const t of rawTrips) {
     if (!tripsByDate.has(t.date)) tripsByDate.set(t.date, []);
     tripsByDate.get(t.date)!.push(t);
   }
@@ -316,7 +225,11 @@ export default async function RequestDetailPage({
                       overflow: "hidden",
                     }}
                   >
-                    <RouteMap pickup={t.pickup} dropoff={t.dropoff} height={180} />
+                    <RouteMap
+                      pickup={t.pickup}
+                      dropoff={t.dropoff}
+                      height={180}
+                    />
 
                     <div style={{ padding: "16px 18px" }}>
                       {/* Trip header */}

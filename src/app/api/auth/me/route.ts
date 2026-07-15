@@ -4,28 +4,18 @@ import { User } from "@/models/User";
 import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
 import { carTypeToCapacity, type CarType } from "@/lib/config/driver";
+import { getProfile } from "@/lib/services/profile";
 
 export async function GET() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await connectDB();
-  const user = await User.findById(session.userId)
-    .select("name email phone role")
-    .lean();
-  if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const profile = await getProfile(session.userId, session.role);
+  if (!profile)
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  if (session.role !== "driver") return NextResponse.json(user);
-
-  const driver = await Driver.findOne({ userId: session.userId }).lean();
-  if (!driver)
-    return NextResponse.json(
-      { error: "Driver profile not found." },
-      { status: 404 },
-    );
-
-  return NextResponse.json({ ...user, driver });
+  return NextResponse.json({ data: profile });
 }
 
 export async function PATCH(req: NextRequest) {

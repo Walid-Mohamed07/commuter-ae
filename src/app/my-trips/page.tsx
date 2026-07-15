@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Types } from "mongoose";
 import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Trip } from "@/models/Trip";
+import { listUserTrips } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
@@ -12,6 +10,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
 import Pagination from "@/components/shared/Pagination";
 import RouteMap from "@/components/shared/RouteMap";
+import type { PaymentStatus } from "@/types/booking";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -38,8 +37,6 @@ function prettyDate(date: string): string {
     day: "numeric",
   });
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -102,26 +99,6 @@ const VEHICLE_OPTIONS: FilterDef = {
 
 // ── shape ────────────────────────────────────────────────────────────────────
 
-interface LatLng {
-  lat: number;
-  lng: number;
-}
-
-interface TripRow {
-  id: string;
-  date: string;
-  paymentStatus: PaymentStatus;
-  vehicleType: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  pickup: LatLng | null;
-  dropoff: LatLng | null;
-  pickupTime: string;
-  arrivalTime: string;
-  priceEgp: number;
-  createdAt: string;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function MyTripsPage({
@@ -178,60 +155,15 @@ export default async function MyTripsPage({
     typeof params.vehicle === "string" ? params.vehicle : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  await connectDB();
-
-  const tripMatch: Record<string, unknown> = {
-    userId: new Types.ObjectId(session.userId),
-  };
-  if (payment && payment in PAY_PILL) tripMatch.paymentStatus = payment;
-  if (vehicle && vehicle in VEHICLES) tripMatch.vehicleType = vehicle;
-
-  const [total, rawTrips] = await Promise.all([
-    Trip.countDocuments(tripMatch),
-    Trip.find(tripMatch)
-      .sort({ date: -1, cycleIndex: 1 })
-      .skip((page - 1) * PAGE_SIZE)
-      .limit(PAGE_SIZE)
-      .lean<
-        {
-          _id: unknown;
-          date: string;
-          paymentStatus: string;
-          vehicleType: string;
-          pickup: { address: string; lat: number; lng: number };
-          dropoff: { address: string; lat: number; lng: number };
-          pickupTime: string;
-          arrivalTime: string;
-          priceEgp: number;
-          createdAt: Date | string;
-        }[]
-      >(),
-  ]);
+  const result = await listUserTrips(session.userId, {
+    page,
+    pageSize: PAGE_SIZE,
+    paymentStatus:
+      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
+    vehicleType: vehicle && vehicle in VEHICLES ? vehicle : undefined,
+  });
+  const { rows: trips, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-
-  const trips: TripRow[] = rawTrips.map((r) => ({
-    id: String(r._id),
-    date: r.date,
-    paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
-    vehicleType: r.vehicleType,
-    pickupAddress: r.pickup?.address ?? "—",
-    dropoffAddress: r.dropoff?.address ?? "—",
-    pickup:
-      typeof r.pickup?.lat === "number"
-        ? { lat: r.pickup.lat, lng: r.pickup.lng }
-        : null,
-    dropoff:
-      typeof r.dropoff?.lat === "number"
-        ? { lat: r.dropoff.lat, lng: r.dropoff.lng }
-        : null,
-    pickupTime: r.pickupTime,
-    arrivalTime: r.arrivalTime,
-    priceEgp: r.priceEgp,
-    createdAt:
-      r.createdAt instanceof Date
-        ? r.createdAt.toISOString()
-        : String(r.createdAt),
-  }));
 
   const hasFilters = Boolean(payment || vehicle);
 
