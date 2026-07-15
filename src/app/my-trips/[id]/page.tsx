@@ -1,6 +1,5 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Types } from "mongoose";
 import {
   Car,
   MapPin,
@@ -11,12 +10,12 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Trip } from "@/models/Trip";
+import { getUserTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import RouteMap from "@/components/shared/RouteMap";
+import type { PaymentStatus, TripStatus } from "@/types/booking";
 
 export const metadata = { title: "Trip detail — Commuter" };
 export const dynamic = "force-dynamic";
@@ -39,17 +38,6 @@ function prettyDate(date: string): string {
   });
 }
 
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type TripStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
-
 const PAY_PILL: Record<
   PaymentStatus,
   { label: string; bg: string; color: string }
@@ -65,7 +53,11 @@ const STATUS_PILL: Record<
   TripStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending_payment: { label: "Pending payment", bg: "#FFF3E0", color: "#E65100" },
+  pending_payment: {
+    label: "Pending payment",
+    bg: "#FFF3E0",
+    color: "#E65100",
+  },
   submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
   matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
   confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
@@ -75,7 +67,15 @@ const STATUS_PILL: Record<
   time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
-function Pill({ label, bg, color }: { label: string; bg: string; color: string }) {
+function Pill({
+  label,
+  bg,
+  color,
+}: {
+  label: string;
+  bg: string;
+  color: string;
+}) {
   return (
     <span
       style={{
@@ -135,13 +135,6 @@ function Detail({
   );
 }
 
-interface StationSelection {
-  id: number;
-  name: string;
-  lat: number;
-  lng: number;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function TripDetailPage({
@@ -152,42 +145,13 @@ export default async function TripDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-trips/${id}`);
-  if (!Types.ObjectId.isValid(id)) notFound();
-
-  await connectDB();
-
-  const trip = await Trip.findOne({
-    _id: id,
-    userId: new Types.ObjectId(session.userId),
-  }).lean<{
-    _id: unknown;
-    requestId: unknown;
-    date: string;
-    cycleIndex: number;
-    pickup: { address: string; lat: number; lng: number };
-    dropoff: { address: string; lat: number; lng: number };
-    vehicleType: string;
-    rideType: string;
-    arrivalTime: string;
-    pickupTime: string;
-    distanceKm: number;
-    durationMinutes: number;
-    priceEgp: number;
-    extraPassengers: number;
-    pickupStation?: StationSelection;
-    dropoffStation?: StationSelection;
-    walkingMinToStation?: number;
-    walkingMinFromStation?: number;
-    passengers: { sameAsMain: boolean; pickup?: { address: string; lat: number; lng: number } | null; dropoff?: { address: string; lat: number; lng: number } | null }[];
-    paymentStatus: string;
-    status: string;
-    createdAt: Date | string;
-  }>();
+  const trip = await getUserTrip(session.userId, id);
 
   if (!trip) notFound();
 
-  const vLabel = VEHICLES[trip.vehicleType as VehicleKey]?.label ?? trip.vehicleType;
-  const requestId = String(trip.requestId);
+  const vLabel =
+    VEHICLES[trip.vehicleType as VehicleKey]?.label ?? trip.vehicleType;
+  const requestId = trip.requestId;
   const paymentStatus = (trip.paymentStatus as PaymentStatus) ?? "pending";
   const status = (trip.status as TripStatus) ?? "pending_payment";
   const distinctPassengers = (trip.passengers ?? []).filter(
@@ -196,7 +160,12 @@ export default async function TripDetailPage({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader authed email={session.email} variant="app" backHref="/my-trips" />
+      <AppHeader
+        authed
+        email={session.email}
+        variant="app"
+        backHref="/my-trips"
+      />
 
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px 56px" }}
@@ -305,7 +274,13 @@ export default async function TripDetailPage({
                   >
                     Pickup
                   </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 14, color: "#0B1E3D" }}>
+                  <p
+                    style={{
+                      margin: "2px 0 0",
+                      fontSize: 14,
+                      color: "#0B1E3D",
+                    }}
+                  >
                     {trip.pickup?.address ?? "—"}
                   </p>
                 </div>
@@ -330,7 +305,13 @@ export default async function TripDetailPage({
                   >
                     Dropoff
                   </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 14, color: "#0B1E3D" }}>
+                  <p
+                    style={{
+                      margin: "2px 0 0",
+                      fontSize: 14,
+                      color: "#0B1E3D",
+                    }}
+                  >
                     {trip.dropoff?.address ?? "—"}
                   </p>
                 </div>
@@ -437,14 +418,42 @@ export default async function TripDetailPage({
                 >
                   Passenger {i + 1}
                 </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                    <MapPin size={12} color="#00C2A8" style={{ marginTop: 2, flexShrink: 0 }} aria-hidden="true" />
-                    <span style={{ fontSize: 13, color: "#0B1E3D" }}>{p.pickup?.address ?? "—"}</span>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <MapPin
+                      size={12}
+                      color="#00C2A8"
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                      {p.pickup?.address ?? "—"}
+                    </span>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                    <MapPin size={12} color="#E74C3C" style={{ marginTop: 2, flexShrink: 0 }} aria-hidden="true" />
-                    <span style={{ fontSize: 13, color: "#0B1E3D" }}>{p.dropoff?.address ?? "—"}</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <MapPin
+                      size={12}
+                      color="#E74C3C"
+                      style={{ marginTop: 2, flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                      {p.dropoff?.address ?? "—"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -460,8 +469,7 @@ export default async function TripDetailPage({
             marginTop: 20,
           }}
         >
-          Requested{" "}
-          {new Date(trip.createdAt instanceof Date ? trip.createdAt : trip.createdAt).toLocaleString("en-EG")}
+          Requested {new Date(trip.createdAt).toLocaleString("en-EG")}
         </p>
       </main>
     </div>

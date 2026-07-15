@@ -3,9 +3,7 @@ import Link from "next/link";
 import { MapPin, Clock, Car } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import AppHeader from "@/components/layout/AppHeader";
-import { connectDB } from "@/lib/db/mongoose";
-import { Request } from "@/models/Request";
-import { Trip } from "@/models/Trip";
+import { expireStaleForUser, listUserRequests } from "@/lib/services/requests";
 import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
@@ -14,6 +12,7 @@ import RouteMap from "@/components/shared/RouteMap";
 import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import type { VehicleKey } from "@/lib/config/vehicles";
+import type { PaymentStatus, BookingStatus } from "@/types/booking";
 
 export const metadata = { title: "My requests — Commuter" };
 export const dynamic = "force-dynamic";
@@ -32,17 +31,6 @@ function to12h(hhmm: string): string {
 function truncate(s: string, max = 34): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -101,29 +89,6 @@ function Pill({
   );
 }
 
-// ── serialisable shape ────────────────────────────────────────────────────────
-
-interface TripRow {
-  vehicleType: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  pickup: { lat: number; lng: number } | null;
-  dropoff: { lat: number; lng: number } | null;
-  pickupTime: string;
-  arrivalTime: string;
-  priceEgp: number;
-}
-
-interface BookingRow {
-  id: string;
-  dates: string[];
-  trips: TripRow[];
-  amountEgp: number;
-  paymentStatus: PaymentStatus;
-  status: BookingStatus;
-  createdAt: string;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 const PAYMENT_OPTIONS: FilterDef = {
@@ -166,109 +131,23 @@ export default async function MyTripsPage({
     typeof params.status === "string" ? params.status : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  await connectDB();
-
-  // Lazy-expire requests older than 2 h that are still pending_payment
-  const _expireFilter = {
-    userId: session.userId,
-    status: "pending_payment",
-    paymentStatus: { $in: ["pending", "failed"] },
-    $expr: {
-      $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-    },
-  };
-  await Request.updateMany(_expireFilter, {
-    $set: { status: "time_out", paymentStatus: "expired" },
-  });
-  await Trip.updateMany(
-    {
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
+  await expireStaleForUser(session.userId);
   const wallet = await getOrCreateWallet(session.userId);
   const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const query: Record<string, unknown> = { userId: session.userId };
-  if (payment && payment in PAY_PILL) query.paymentStatus = payment;
-  if (statusFilter && statusFilter in STATUS_PILL) query.status = statusFilter;
-
-  const total = await Request.countDocuments(query);
+  const result = await listUserRequests(session.userId, {
+    page,
+    pageSize: PAGE_SIZE,
+    paymentStatus:
+      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
+    status:
+      statusFilter && statusFilter in STATUS_PILL
+        ? (statusFilter as BookingStatus)
+        : undefined,
+  });
+  const { rows: bookings, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const raw = await Request.find(query)
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * PAGE_SIZE)
-    .limit(PAGE_SIZE)
-    .lean();
-
   const hasFilters = Boolean(payment || statusFilter);
-
-  // Fetch cycle-template trips (first date only) for compact list cards.
-  const rawList = raw as Record<string, unknown>[];
-  const reqIds = rawList.map((b) => b._id);
-  const firstDateByReq = new Map<string, string>(
-    rawList.map((b) => [String(b._id), ((b.dates as string[]) ?? [])[0] ?? ""]),
-  );
-  const tripDocs = await Trip.find({ requestId: { $in: reqIds } })
-    .sort({ date: 1, cycleIndex: 1 })
-    .lean<
-      {
-        requestId: unknown;
-        date: string;
-        cycleIndex: number;
-        vehicleType: string;
-        pickup: { address: string; lat: number; lng: number };
-        dropoff: { address: string; lat: number; lng: number };
-        pickupTime: string;
-        arrivalTime: string;
-        priceEgp: number;
-      }[]
-    >();
-
-  // Group by requestId; keep only first-date trips for compact list card.
-  const tripsByReq = new Map<string, TripRow[]>();
-  for (const t of tripDocs) {
-    const rid = String(t.requestId);
-    if (t.date !== firstDateByReq.get(rid)) continue;
-    if (!tripsByReq.has(rid)) tripsByReq.set(rid, []);
-    tripsByReq.get(rid)!.push({
-      vehicleType: t.vehicleType,
-      pickupAddress: t.pickup?.address ?? "—",
-      dropoffAddress: t.dropoff?.address ?? "—",
-      pickup:
-        typeof t.pickup?.lat === "number"
-          ? { lat: t.pickup.lat, lng: t.pickup.lng }
-          : null,
-      dropoff:
-        typeof t.dropoff?.lat === "number"
-          ? { lat: t.dropoff.lat, lng: t.dropoff.lng }
-          : null,
-      pickupTime: t.pickupTime,
-      arrivalTime: t.arrivalTime,
-      priceEgp: t.priceEgp,
-    });
-  }
-
-  // Serialise — strip ObjectId / Date to plain strings
-  const bookings: BookingRow[] = rawList.map((b) => ({
-    id: String(b._id),
-    dates: (b.dates as string[]) ?? [],
-    amountEgp: b.amountEgp as number,
-    paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
-    status: (b.status as BookingStatus) ?? "pending_payment",
-    createdAt:
-      b.createdAt instanceof Date
-        ? b.createdAt.toISOString()
-        : String(b.createdAt),
-    trips: tripsByReq.get(String(b._id)) ?? [],
-  }));
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
