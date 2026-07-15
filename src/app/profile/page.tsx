@@ -21,9 +21,14 @@ export default async function ProfilePage() {
         initialPhone={profile.phone}
         gender={profile.gender}
         carType={profile.carType}
-        vehicleName={profile.vehicleName}
+        carBrand={profile.carBrand}
+        carModel={profile.carModel}
+        modelYear={profile.modelYear}
         vehicleColor={profile.vehicleColor}
-        licensePlate={profile.licensePlate}
+        plateChar1={profile.plateChar1}
+        plateChar2={profile.plateChar2}
+        plateChar3={profile.plateChar3}
+        plateDigits={profile.plateDigits}
         licenseExpiry={profile.licenseExpiry}
         carCapacity={profile.carCapacity}
         documents={profile.documents}

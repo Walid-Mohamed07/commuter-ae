@@ -44,9 +44,14 @@ export async function PATCH(req: NextRequest) {
     const {
       gender,
       carType,
-      vehicleName,
+      carBrand,
+      carModel,
+      modelYear,
       vehicleColor,
-      licensePlate,
+      plateChar1,
+      plateChar2,
+      plateChar3,
+      plateDigits,
       licenseExpiry,
       documents,
     } = body;
@@ -58,9 +63,19 @@ export async function PATCH(req: NextRequest) {
       // Server-authoritative capacity — never trust client input.
       driverUpdate.carCapacity = carTypeToCapacity(carType as CarType);
     }
-    if (vehicleName?.trim()) driverUpdate.vehicleName = vehicleName.trim();
+    if (carBrand?.trim()) driverUpdate.carBrand = carBrand.trim();
+    if (carModel?.trim()) driverUpdate.carModel = carModel.trim();
+    if (Number.isInteger(Number(modelYear)) && Number(modelYear) > 0)
+      driverUpdate.modelYear = Number(modelYear);
     if (vehicleColor?.trim()) driverUpdate.vehicleColor = vehicleColor.trim();
-    if (licensePlate?.trim()) driverUpdate.licensePlate = licensePlate.trim();
+    if (typeof plateChar1 === "string" && /^[\u0600-\u06FF]$/.test(plateChar1))
+      driverUpdate.plateChar1 = plateChar1;
+    if (typeof plateChar2 === "string" && /^[\u0600-\u06FF]$/.test(plateChar2))
+      driverUpdate.plateChar2 = plateChar2;
+    if (typeof plateChar3 === "string" && /^[\u0600-\u06FF]$/.test(plateChar3))
+      driverUpdate.plateChar3 = plateChar3;
+    if (typeof plateDigits === "string" && /^\d{3,4}$/.test(plateDigits))
+      driverUpdate.plateDigits = plateDigits;
     if (licenseExpiry?.trim())
       driverUpdate.licenseExpiry = licenseExpiry.trim();
 

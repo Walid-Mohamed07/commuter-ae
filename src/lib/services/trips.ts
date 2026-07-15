@@ -2,19 +2,38 @@ import "server-only";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db/mongoose";
 import { Trip } from "@/models/Trip";
-import type { PaymentStatus, TripListRow } from "@/types/booking";
+import { Request as RequestModel } from "@/models/Request";
+import type { BookingStatus, PaymentStatus, TripListRow } from "@/types/booking";
 import type { GeoPoint, StationSelection } from "@/types/geo";
+
+const STATUS_GROUPS: Record<string, BookingStatus[]> = {
+  pending_payment: ["pending_payment"],
+  upcoming: ["submitted", "confirmed"],
+  ongoing: ["active", "matching"],
+  previous: ["completed", "cancelled", "time_out"],
+};
 
 export interface ListUserTripsOptions {
   page: number;
   pageSize?: number;
   paymentStatus?: PaymentStatus;
   vehicleType?: string;
+  statusGroup?: "previous" | "ongoing" | "upcoming" | "pending_payment";
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export async function listUserTrips(
   userId: string,
-  { page, pageSize = 12, paymentStatus, vehicleType }: ListUserTripsOptions,
+  {
+    page,
+    pageSize = 12,
+    paymentStatus,
+    vehicleType,
+    statusGroup,
+    dateFrom,
+    dateTo,
+  }: ListUserTripsOptions,
 ): Promise<{ rows: TripListRow[]; total: number; page: number }> {
   await connectDB();
 
@@ -23,36 +42,61 @@ export async function listUserTrips(
   };
   if (paymentStatus) tripMatch.paymentStatus = paymentStatus;
   if (vehicleType) tripMatch.vehicleType = vehicleType;
+  if (statusGroup && STATUS_GROUPS[statusGroup]) {
+    tripMatch.status = { $in: STATUS_GROUPS[statusGroup] };
+  }
+  if (dateFrom || dateTo) {
+    const dateCond: Record<string, string> = {};
+    if (dateFrom) dateCond.$gte = dateFrom;
+    dateCond.$lte = dateTo || dateFrom!;
+    tripMatch.date = dateCond;
+  }
 
   const [total, rawTrips] = await Promise.all([
     Trip.countDocuments(tripMatch),
     Trip.find(tripMatch)
-      .sort({ date: -1, cycleIndex: 1 })
+      .sort({ date: 1, cycleIndex: 1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean<
         {
           _id: unknown;
+          requestId: unknown;
           date: string;
           paymentStatus: string;
+          status: string;
           vehicleType: string;
           pickup: GeoPoint;
           dropoff: GeoPoint;
           pickupTime: string;
           arrivalTime: string;
           priceEgp: number;
+          distanceKm: number;
+          durationMinutes: number;
           createdAt: Date | string;
         }[]
       >(),
   ]);
+
+  const requestIds = Array.from(
+    new Set(rawTrips.map((t) => String(t.requestId))),
+  );
+  const requests = await RequestModel.find({ _id: { $in: requestIds } })
+    .select("amountEgp")
+    .lean<{ _id: unknown; amountEgp: number }[]>();
+  const amountByRequestId = new Map(
+    requests.map((r) => [String(r._id), r.amountEgp]),
+  );
 
   return {
     total,
     page,
     rows: rawTrips.map((trip) => ({
       id: String(trip._id),
+      requestId: String(trip.requestId),
       date: trip.date,
       paymentStatus: (trip.paymentStatus as PaymentStatus) ?? "pending",
+      status: (trip.status as BookingStatus) ?? "pending_payment",
       vehicleType: trip.vehicleType,
       pickupAddress: trip.pickup?.address ?? "—",
       dropoffAddress: trip.dropoff?.address ?? "—",
@@ -67,6 +111,9 @@ export async function listUserTrips(
       pickupTime: trip.pickupTime,
       arrivalTime: trip.arrivalTime,
       priceEgp: trip.priceEgp,
+      distanceKm: trip.distanceKm,
+      durationMinutes: trip.durationMinutes,
+      bookingAmountEgp: amountByRequestId.get(String(trip.requestId)) ?? trip.priceEgp,
       createdAt:
         trip.createdAt instanceof Date
           ? trip.createdAt.toISOString()

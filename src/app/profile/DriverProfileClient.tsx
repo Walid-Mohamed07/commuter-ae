@@ -45,15 +45,15 @@ interface Props {
   initialPhone: string;
   gender: "male" | "female";
   carType: CarType | "";
-  carBrand: string;
-  carModel: string;
-  modelYear: number | null;
-  vehicleColor: string;
-  plateChar1: string;
-  plateChar2: string;
-  plateChar3: string;
-  plateDigits: string;
-  licenseExpiry: string;
+  carBrand?: string;
+  carModel?: string;
+  modelYear?: number | null;
+  vehicleColor?: string;
+  plateChar1?: string;
+  plateChar2?: string;
+  plateChar3?: string;
+  plateDigits?: string;
+  licenseExpiry?: string;
   carCapacity?: number;
   documents: Record<string, string | null>;
   verificationStatus: "incomplete" | "pending" | "verified";
@@ -147,15 +147,15 @@ export default function DriverProfileClient({
   initialPhone,
   gender: initialGender,
   carType: initialCarType,
-  carBrand: initialCarBrand,
-  carModel: initialCarModel,
-  modelYear: initialModelYear,
-  vehicleColor: initialVehicleColor,
-  plateChar1: initialPlateChar1,
-  plateChar2: initialPlateChar2,
-  plateChar3: initialPlateChar3,
-  plateDigits: initialPlateDigits,
-  licenseExpiry: initialLicenseExpiry,
+  carBrand: initialCarBrand = "",
+  carModel: initialCarModel = "",
+  modelYear: initialModelYear = null,
+  vehicleColor: initialVehicleColor = "",
+  plateChar1: initialPlateChar1 = "",
+  plateChar2: initialPlateChar2 = "",
+  plateChar3: initialPlateChar3 = "",
+  plateDigits: initialPlateDigits = "",
+  licenseExpiry: initialLicenseExpiry = "",
   carCapacity,
   documents: initialDocuments,
   verificationStatus: initialVerificationStatus,

@@ -12,6 +12,7 @@ export async function GET(
 
   const { id } = await params;
   const trip = await getUserTrip(session.userId, id);
+
   if (!trip) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   return NextResponse.json({ data: trip });

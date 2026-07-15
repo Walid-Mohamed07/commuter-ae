@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
+import { Car, MapPin, Clock, CalendarDays, ChevronRight, Route } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { listUserTrips } from "@/lib/services/trips";
+import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import EmptyState from "@/components/shared/EmptyState";
-import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
+import StatusGroupFilter from "@/components/shared/StatusGroupFilter";
 import DateRangeCalendar from "@/components/shared/DateRangeCalendar";
 import Pagination from "@/components/shared/Pagination";
-import RouteMap from "@/components/shared/RouteMap";
-import type { PaymentStatus } from "@/types/booking";
+import type { BookingStatus, TripListRow } from "@/types/booking";
+import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -39,17 +40,6 @@ function prettyDate(date: string): string {
   });
 }
 
-const PAY_PILL: Record<
-  PaymentStatus,
-  { label: string; bg: string; color: string }
-> = {
-  pending: { label: "Awaiting payment", bg: "#FFF8E1", color: "#E65100" },
-  paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
-  failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
-  refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
-  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
-};
-
 const STATUS_PILL: Record<
   BookingStatus,
   { label: string; bg: string; color: string }
@@ -59,17 +49,14 @@ const STATUS_PILL: Record<
     bg: "#FFF3E0",
     color: "#E65100",
   },
-  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
-  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
-  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
-  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
-  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
-  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
+  submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
+  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
+  active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  cancelled: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  time_out: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
 };
-
-const HISTORY_STATUSES: BookingStatus[] = ["completed", "cancelled", "time_out"];
-const DEFAULT_HIDDEN_STATUSES: BookingStatus[] = HISTORY_STATUSES;
 
 function Pill({
   label,
@@ -98,50 +85,6 @@ function Pill({
     </span>
   );
 }
-
-const PAYMENT_OPTIONS: FilterDef = {
-  key: "payment",
-  label: "Payment",
-  options: [
-    { value: "paid", label: "Paid" },
-    { value: "pending", label: "Awaiting payment" },
-    { value: "failed", label: "Failed" },
-    { value: "refunded", label: "Refunded" },
-  ],
-};
-
-const VEHICLE_OPTIONS: FilterDef = {
-  key: "vehicle",
-  label: "Vehicle",
-  options: (Object.keys(VEHICLES) as VehicleKey[]).map((k) => ({
-    value: k,
-    label: VEHICLES[k].label,
-  })),
-};
-
-const STATUS_OPTIONS: FilterDef = {
-  key: "status",
-  label: "Status",
-  options: [
-    { value: "pending_payment", label: "Pending payment" },
-    { value: "submitted", label: "Submitted" },
-    { value: "matching", label: "Matching" },
-    { value: "confirmed", label: "Confirmed" },
-    { value: "active", label: "Active" },
-  ],
-};
-
-const HISTORY_OPTIONS: FilterDef = {
-  key: "history",
-  label: "History",
-  options: [
-    { value: "completed", label: "Completed" },
-    { value: "cancelled", label: "Cancelled" },
-    { value: "time_out", label: "Timed out" },
-  ],
-};
-
-// ── shape ────────────────────────────────────────────────────────────────────
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -193,14 +136,13 @@ export default async function MyTripsPage({
   }
 
   const params = await searchParams;
-  const payment =
-    typeof params.payment === "string" ? params.payment : undefined;
-  const vehicle =
-    typeof params.vehicle === "string" ? params.vehicle : undefined;
-  const statusFilter =
-    typeof params.status === "string" ? params.status : undefined;
-  const historyFilter =
-    typeof params.history === "string" ? params.history : undefined;
+  const groupFilter =
+    typeof params.group === "string" &&
+    ["upcoming", "ongoing", "previous", "pending_payment"].includes(
+      params.group,
+    )
+      ? (params.group as "upcoming" | "ongoing" | "previous" | "pending_payment")
+      : undefined;
   const dateFrom =
     typeof params.dateFrom === "string" ? params.dateFrom : undefined;
   const dateTo =
@@ -210,24 +152,28 @@ export default async function MyTripsPage({
   const result = await listUserTrips(session.userId, {
     page,
     pageSize: PAGE_SIZE,
-    paymentStatus:
-      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
-    vehicleType: vehicle && vehicle in VEHICLES ? vehicle : undefined,
+    statusGroup: groupFilter,
+    dateFrom,
+    dateTo,
   });
   const { rows: trips, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  const wallet = await getOrCreateWallet(session.userId);
+  const walletBalance = wallet.balanceEgp ?? 0;
+
+  // Today's date in YYYY-MM-DD format for comparison
+  const todayStr = new Date().toISOString().split("T")[0];
+
   // Group consecutive trips by day (order already sorted above).
-  const dayGroups: { date: string; trips: TripRow[] }[] = [];
+  const dayGroups: { date: string; trips: TripListRow[] }[] = [];
   for (const t of trips) {
     const last = dayGroups[dayGroups.length - 1];
     if (last && last.date === t.date) last.trips.push(t);
     else dayGroups.push({ date: t.date, trips: [t] });
   }
 
-  const hasFilters = Boolean(
-    payment || vehicle || statusFilter || historyFilter || dateFrom || dateTo,
-  );
+  const hasFilters = Boolean(groupFilter || dateFrom || dateTo);
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -267,11 +213,8 @@ export default async function MyTripsPage({
           }}
         >
           <DateRangeCalendar />
+          <StatusGroupFilter />
         </div>
-
-        <FilterBar
-          filters={[STATUS_OPTIONS, HISTORY_OPTIONS, PAYMENT_OPTIONS, VEHICLE_OPTIONS]}
-        />
 
         {trips.length === 0 ? (
           <EmptyState
@@ -359,6 +302,19 @@ export default async function MyTripsPage({
                           }}
                         >
                           <div style={{ padding: "16px 18px" }}>
+                            {/* Created at */}
+                            <div style={{ marginBottom: 10 }}>
+                              <span style={{ fontSize: 11, color: "#9aa7b4", fontWeight: 600 }}>
+                                Requested{" "}
+                                {new Date(trip.createdAt).toLocaleString("en-EG", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+
                             {/* Vehicle (large) + price */}
                             <div
                               style={{
@@ -400,7 +356,7 @@ export default async function MyTripsPage({
                               </span>
                             </div>
 
-                            {/* Status pills */}
+                            {/* Status pill */}
                             <div
                               style={{
                                 display: "flex",
@@ -410,10 +366,6 @@ export default async function MyTripsPage({
                                 marginBottom: 12,
                               }}
                             >
-                              <Pill
-                                {...(PAY_PILL[trip.paymentStatus] ??
-                                  PAY_PILL.pending)}
-                              />
                               <Pill
                                 {...(STATUS_PILL[trip.status] ??
                                   STATUS_PILL.pending_payment)}
@@ -507,7 +459,7 @@ export default async function MyTripsPage({
                               </div>
                             </div>
 
-                            {/* Meta: distance + created date */}
+                            {/* Meta: distance + duration */}
                             <div
                               style={{
                                 display: "flex",
@@ -518,12 +470,18 @@ export default async function MyTripsPage({
                                 borderTop: "1px solid #f4f6f8",
                               }}
                             >
-                              <span style={{ fontSize: 12, color: "#9aa7b4" }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  fontSize: 12,
+                                  color: "#9aa7b4",
+                                }}
+                              >
+                                <Route size={12} aria-hidden="true" />
                                 {trip.distanceKm?.toFixed(1)} km ·{" "}
-                                {new Date(trip.createdAt).toLocaleDateString(
-                                  "en-EG",
-                                  { month: "short", day: "numeric" },
-                                )}
+                                {trip.durationMinutes} min
                               </span>
                               <ChevronRight size={16} color="#9aa7b4" aria-hidden="true" />
                             </div>

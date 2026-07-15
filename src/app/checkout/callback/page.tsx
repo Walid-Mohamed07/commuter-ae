@@ -36,7 +36,7 @@ export default async function CallbackPage({
 
   const booking = await getBookingStatus(session.userId, bookingId);
 
-  if (!booking) redirect("/my-requests");
+  if (!booking) redirect("/my-trips");
 
   const isPaid = booking.paymentStatus === "paid";
   const isFailed =
@@ -182,7 +182,7 @@ export default async function CallbackPage({
         {/* Actions */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Link
-            href="/my-requests"
+            href="/my-trips"
             style={{
               display: "flex",
               alignItems: "center",
@@ -198,7 +198,7 @@ export default async function CallbackPage({
               transition: "background 0.2s",
             }}
           >
-            View my requests
+            View my trips
             <ArrowRight size={16} aria-hidden="true" />
           </Link>
 
