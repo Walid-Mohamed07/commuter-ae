@@ -13,7 +13,7 @@ export default function Footer() {
 
   const accountLinks: [string, string][] = [
     ["Log in", "/login"],
-    ["My requests", "/my-requests"],
+    ["My trips", "/my-trips"],
     ["Profile", "/profile"],
   ];
 

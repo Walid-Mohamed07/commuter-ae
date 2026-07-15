@@ -275,7 +275,7 @@ export default function WalletClient() {
           ) : (
             <Plus size={18} aria-hidden="true" />
           )}
-          {busy ? "Redirecting…" : `Top up ${amount} EGP`}
+          {busy ? "Redirecting…" : `Charge ${amount} EGP`}
         </button>
       </section>
 

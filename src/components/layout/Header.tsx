@@ -108,7 +108,7 @@ export default function Header() {
           className="header-desktop-nav"
         >
           <Link
-            href="/my-requests"
+            href="/my-trips"
             style={{
               fontWeight: 500,
               fontSize: 14,
@@ -127,7 +127,7 @@ export default function Header() {
               e.currentTarget.style.background = "transparent";
             }}
           >
-            My requests
+            My trips
           </Link>
           <Link
             href="/login"
@@ -196,7 +196,7 @@ export default function Header() {
           }}
         >
           <Link
-            href="/my-requests"
+            href="/my-trips"
             onClick={() => setMenuOpen(false)}
             style={{
               display: "block",
@@ -208,7 +208,7 @@ export default function Header() {
               textDecoration: "none",
             }}
           >
-            My requests
+            My trips
           </Link>
           <Link
             href="/login"

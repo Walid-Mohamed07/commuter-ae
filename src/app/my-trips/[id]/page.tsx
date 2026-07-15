@@ -262,7 +262,12 @@ export default async function TripDetailPage({
             marginBottom: 16,
           }}
         >
-          <RouteMap pickup={trip.pickup} dropoff={trip.dropoff} height={200} />
+          <RouteMap
+            pickup={trip.pickup}
+            dropoff={trip.dropoff}
+            height={220}
+            interactive
+          />
 
           <div style={{ padding: "16px 18px" }}>
             {/* Pickup / dropoff */}

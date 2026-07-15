@@ -28,7 +28,7 @@ export default async function CallbackPage({
   const { bookingId, status: kashierStatus } = await searchParams;
 
   if (!bookingId || !Types.ObjectId.isValid(bookingId)) {
-    redirect("/my-requests");
+    redirect("/my-trips");
   }
 
   // Active verification — query Kashier directly and settle the booking.

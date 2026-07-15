@@ -483,7 +483,7 @@ export default function ProfileClient({
           style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}
         >
           <Link
-            href="/my-requests"
+            href="/my-trips"
             style={{
               fontSize: 14,
               fontWeight: 600,
