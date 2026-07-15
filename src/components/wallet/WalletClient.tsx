@@ -72,6 +72,7 @@ export default function WalletClient() {
         // Clean the URL so a refresh doesn't re-verify.
         router.replace("/wallet");
       }
+      // hiii
       // Self-heal: settle any top-ups Kashier confirmed but we missed
       // (redirect + webhook both failed). Then load the fresh balance.
       try {
