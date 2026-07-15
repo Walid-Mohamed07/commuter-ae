@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Types } from "mongoose";
-import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
+import { Car, MapPin, Clock, CalendarDays, ChevronRight, Route } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { listUserTrips } from "@/lib/services/trips";
+import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import EmptyState from "@/components/shared/EmptyState";
-import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
+import StatusGroupFilter from "@/components/shared/StatusGroupFilter";
+import DateRangeCalendar from "@/components/shared/DateRangeCalendar";
 import Pagination from "@/components/shared/Pagination";
-import RouteMap from "@/components/shared/RouteMap";
+import type { BookingStatus, TripListRow } from "@/types/booking";
+import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -39,40 +40,22 @@ function prettyDate(date: string): string {
   });
 }
 
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
-
-const PAY_PILL: Record<
-  PaymentStatus,
-  { label: string; bg: string; color: string }
-> = {
-  pending: { label: "Awaiting payment", bg: "#FFF8E1", color: "#E65100" },
-  paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
-  failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
-  refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
-  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
-};
-
 const STATUS_PILL: Record<
   BookingStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending_payment: { label: "Pending payment", bg: "#FFF3E0", color: "#E65100" },
-  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
-  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
-  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
-  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
-  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
-  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
+  pending_payment: {
+    label: "Pending payment",
+    bg: "#FFF3E0",
+    color: "#E65100",
+  },
+  submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
+  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
+  active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  cancelled: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  time_out: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
 };
 
 function Pill({
@@ -103,64 +86,6 @@ function Pill({
   );
 }
 
-const PAYMENT_OPTIONS: FilterDef = {
-  key: "payment",
-  label: "Payment",
-  options: [
-    { value: "paid", label: "Paid" },
-    { value: "pending", label: "Awaiting payment" },
-    { value: "failed", label: "Failed" },
-    { value: "refunded", label: "Refunded" },
-  ],
-};
-
-const VEHICLE_OPTIONS: FilterDef = {
-  key: "vehicle",
-  label: "Vehicle",
-  options: (Object.keys(VEHICLES) as VehicleKey[]).map((k) => ({
-    value: k,
-    label: VEHICLES[k].label,
-  })),
-};
-
-const STATUS_OPTIONS: FilterDef = {
-  key: "status",
-  label: "Status",
-  options: [
-    { value: "pending_payment", label: "Pending payment" },
-    { value: "submitted", label: "Submitted" },
-    { value: "matching", label: "Matching" },
-    { value: "confirmed", label: "Confirmed" },
-    { value: "active", label: "Active" },
-    { value: "completed", label: "Completed" },
-    { value: "cancelled", label: "Cancelled" },
-    { value: "time_out", label: "Timed out" },
-  ],
-};
-
-// ── shape ────────────────────────────────────────────────────────────────────
-
-interface LatLng {
-  lat: number;
-  lng: number;
-}
-
-interface TripRow {
-  bookingId: string;
-  date: string;
-  paymentStatus: PaymentStatus;
-  status: BookingStatus;
-  vehicleType: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  pickup: LatLng | null;
-  dropoff: LatLng | null;
-  pickupTime: string;
-  arrivalTime: string;
-  priceEgp: number;
-  createdAt: string;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function MyTripsPage({
@@ -170,8 +95,6 @@ export default async function MyTripsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-trips");
-
-  if (session.role !== "driver") redirect("/activity");
 
   if (session.role === "driver") {
     return (
@@ -213,107 +136,44 @@ export default async function MyTripsPage({
   }
 
   const params = await searchParams;
-  const payment =
-    typeof params.payment === "string" ? params.payment : undefined;
-  const vehicle =
-    typeof params.vehicle === "string" ? params.vehicle : undefined;
-  const statusFilter =
-    typeof params.status === "string" ? params.status : undefined;
+  const groupFilter =
+    typeof params.group === "string" &&
+    ["upcoming", "ongoing", "previous", "pending_payment"].includes(
+      params.group,
+    )
+      ? (params.group as "upcoming" | "ongoing" | "previous" | "pending_payment")
+      : undefined;
+  const dateFrom =
+    typeof params.dateFrom === "string" ? params.dateFrom : undefined;
+  const dateTo =
+    typeof params.dateTo === "string" ? params.dateTo : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  await connectDB();
-
-  // Lazy-expire bookings older than 2 h that are still pending_payment
-  await Booking.updateMany(
-    {
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
-  const bookingMatch: Record<string, unknown> = {
-    userId: new Types.ObjectId(session.userId),
-  };
-  if (payment && payment in PAY_PILL) bookingMatch.paymentStatus = payment;
-  if (statusFilter && statusFilter in STATUS_PILL)
-    bookingMatch.status = statusFilter;
-
-  const tripMatchStage =
-    vehicle && vehicle in VEHICLES
-      ? [{ $match: { "trips.vehicleType": vehicle } }]
-      : [];
-
-  const [result] = await Booking.aggregate([
-    { $match: bookingMatch },
-    { $unwind: { path: "$trips", includeArrayIndex: "tripIndex" } },
-    ...tripMatchStage,
-    { $sort: { createdAt: -1, tripIndex: 1 } },
-    {
-      $facet: {
-        data: [
-          { $skip: (page - 1) * PAGE_SIZE },
-          { $limit: PAGE_SIZE },
-          {
-            $project: {
-              _id: 0,
-              bookingId: "$_id",
-              date: 1,
-              paymentStatus: 1,
-              status: 1,
-              createdAt: 1,
-              vehicleType: "$trips.vehicleType",
-              pickupAddress: "$trips.pickup.address",
-              dropoffAddress: "$trips.dropoff.address",
-              pickupLat: "$trips.pickup.lat",
-              pickupLng: "$trips.pickup.lng",
-              dropoffLat: "$trips.dropoff.lat",
-              dropoffLng: "$trips.dropoff.lng",
-              pickupTime: "$trips.pickupTime",
-              arrivalTime: "$trips.arrivalTime",
-              priceEgp: "$trips.priceEgp",
-            },
-          },
-        ],
-        total: [{ $count: "count" }],
-      },
-    },
-  ]);
-
-  const rawRows = (result?.data ?? []) as Record<string, unknown>[];
-  const total: number = result?.total?.[0]?.count ?? 0;
+  const result = await listUserTrips(session.userId, {
+    page,
+    pageSize: PAGE_SIZE,
+    statusGroup: groupFilter,
+    dateFrom,
+    dateTo,
+  });
+  const { rows: trips, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const trips: TripRow[] = rawRows.map((r) => ({
-    bookingId: String(r.bookingId),
-    date: r.date as string,
-    paymentStatus: (r.paymentStatus as PaymentStatus) ?? "pending",
-    status: (r.status as BookingStatus) ?? "pending_payment",
-    vehicleType: r.vehicleType as string,
-    pickupAddress: (r.pickupAddress as string) ?? "—",
-    dropoffAddress: (r.dropoffAddress as string) ?? "—",
-    pickup:
-      typeof r.pickupLat === "number" && typeof r.pickupLng === "number"
-        ? { lat: r.pickupLat as number, lng: r.pickupLng as number }
-        : null,
-    dropoff:
-      typeof r.dropoffLat === "number" && typeof r.dropoffLng === "number"
-        ? { lat: r.dropoffLat as number, lng: r.dropoffLng as number }
-        : null,
-    pickupTime: r.pickupTime as string,
-    arrivalTime: r.arrivalTime as string,
-    priceEgp: r.priceEgp as number,
-    createdAt:
-      r.createdAt instanceof Date
-        ? r.createdAt.toISOString()
-        : String(r.createdAt),
-  }));
+  const wallet = await getOrCreateWallet(session.userId);
+  const walletBalance = wallet.balanceEgp ?? 0;
 
-  const hasFilters = Boolean(payment || vehicle || statusFilter);
+  // Today's date in YYYY-MM-DD format for comparison
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // Group consecutive trips by day (order already sorted above).
+  const dayGroups: { date: string; trips: TripListRow[] }[] = [];
+  for (const t of trips) {
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.date === t.date) last.trips.push(t);
+    else dayGroups.push({ date: t.date, trips: [t] });
+  }
+
+  const hasFilters = Boolean(groupFilter || dateFrom || dateTo);
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -343,7 +203,18 @@ export default async function MyTripsPage({
           </p>
         </div>
 
-        <FilterBar filters={[PAYMENT_OPTIONS, VEHICLE_OPTIONS, STATUS_OPTIONS]} />
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <DateRangeCalendar />
+          <StatusGroupFilter />
+        </div>
 
         {trips.length === 0 ? (
           <EmptyState
@@ -352,7 +223,7 @@ export default async function MyTripsPage({
             description={
               hasFilters
                 ? "Try clearing the filters to see your full history."
-                : "Every trip from your bookings will be logged here."
+                : "Every trip from your requests will be logged here."
             }
             action={
               <Link
@@ -374,216 +245,263 @@ export default async function MyTripsPage({
           />
         ) : (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {trips.map((trip, i) => {
-                const vLabel =
-                  VEHICLES[trip.vehicleType as VehicleKey]?.label ??
-                  trip.vehicleType;
-                const timedOut = trip.status === "time_out";
-                return (
-                  <Link
-                    key={`${trip.bookingId}-${i}`}
-                    href={`/my-requests/${trip.bookingId}`}
+            {dayGroups.map((group) => (
+              <div key={group.date} style={{ marginBottom: 20 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <CalendarDays size={14} color="#00806E" aria-hidden="true" />
+                  <span
                     style={{
-                      background: "#fff",
-                      borderRadius: 14,
-                      border: "1px solid #eef0f3",
-                      overflow: "hidden",
-                      textDecoration: "none",
-                      color: "inherit",
-                      display: "block",
-                      opacity: timedOut ? 0.55 : 1,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#0B1E3D",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
                     }}
                   >
-                    <RouteMap
-                      pickup={trip.pickup}
-                      dropoff={trip.dropoff}
-                      height={130}
-                    />
-                    <div style={{ padding: "14px 18px" }}>
-                      {/* Top row: date + payment status + price */}
+                    {group.date === todayStr ? "Today" : prettyDate(group.date)}
+                  </span>
+                  <span style={{ fontSize: 12, color: "#9aa7b4", fontWeight: 600 }}>
+                    · {group.trips.length} trip{group.trips.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                >
+                  {group.trips.map((trip) => {
+                    const vLabel =
+                      VEHICLES[trip.vehicleType as VehicleKey]?.label ??
+                      trip.vehicleType;
+                    const timedOut = trip.status === "time_out";
+                    const needsPayment =
+                      trip.paymentStatus === "pending" ||
+                      trip.paymentStatus === "failed";
+                    return (
                       <div
+                        key={trip.id}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginBottom: 12,
+                          background: "#fff",
+                          borderRadius: 14,
+                          border: "1px solid #eef0f3",
+                          overflow: "hidden",
+                          opacity: timedOut ? 0.55 : 1,
                         }}
                       >
-                        <div
+                        <Link
+                          href={`/my-trips/${trip.id}`}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            flexWrap: "wrap",
+                            textDecoration: "none",
+                            color: "inherit",
+                            display: "block",
                           }}
                         >
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#5A6A7A",
-                            }}
-                          >
-                            <CalendarDays
-                              size={13}
-                              color="#5A6A7A"
-                              aria-hidden="true"
-                            />
-                            {prettyDate(trip.date)}
-                          </span>
-                          <Pill
-                            {...(PAY_PILL[trip.paymentStatus] ??
-                              PAY_PILL.pending)}
-                          />
-                          <Pill
-                            {...(STATUS_PILL[trip.status] ??
-                              STATUS_PILL.pending_payment)}
-                          />
-                        </div>
-                        <span
-                          style={{
-                            fontWeight: 800,
-                            fontSize: 15,
-                            color: "#00C2A8",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {trip.priceEgp} EGP
-                        </span>
-                      </div>
+                          <div style={{ padding: "16px 18px" }}>
+                            {/* Created at */}
+                            <div style={{ marginBottom: 10 }}>
+                              <span style={{ fontSize: 11, color: "#9aa7b4", fontWeight: 600 }}>
+                                Requested{" "}
+                                {new Date(trip.createdAt).toLocaleString("en-EG", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
 
-                      {/* Vehicle */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <Car size={14} color="#0B1E3D" aria-hidden="true" />
-                        <span
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "#0B1E3D",
-                          }}
-                        >
-                          {vLabel}
-                        </span>
-                      </div>
+                            {/* Vehicle (large) + price */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <Car size={20} color="#00806E" aria-hidden="true" />
+                                <span
+                                  style={{
+                                    fontSize: 18,
+                                    fontWeight: 800,
+                                    color: "#0B1E3D",
+                                    letterSpacing: "-0.01em",
+                                  }}
+                                >
+                                  {vLabel}
+                                </span>
+                              </div>
+                              <span
+                                style={{
+                                  fontWeight: 800,
+                                  fontSize: 16,
+                                  color: "#00C2A8",
+                                  fontVariantNumeric: "tabular-nums",
+                                }}
+                              >
+                                {trip.priceEgp} EGP
+                              </span>
+                            </div>
 
-                      {/* Pickup → Dropoff */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 6,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: 8,
-                          }}
-                        >
-                          <MapPin
-                            size={13}
-                            color="#00C2A8"
-                            style={{ marginTop: 2, flexShrink: 0 }}
-                            aria-hidden="true"
-                          />
-                          <span style={{ fontSize: 13, color: "#0B1E3D" }}>
-                            {truncate(trip.pickupAddress)}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: 8,
-                          }}
-                        >
-                          <MapPin
-                            size={13}
-                            color="#E74C3C"
-                            style={{ marginTop: 2, flexShrink: 0 }}
-                            aria-hidden="true"
-                          />
-                          <span style={{ fontSize: 13, color: "#0B1E3D" }}>
-                            {truncate(trip.dropoffAddress)}
-                          </span>
-                        </div>
-                      </div>
+                            {/* Status pill */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                flexWrap: "wrap",
+                                marginBottom: 12,
+                              }}
+                            >
+                              <Pill
+                                {...(STATUS_PILL[trip.status] ??
+                                  STATUS_PILL.pending_payment)}
+                              />
+                            </div>
 
-                      {/* Times */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 16,
-                          marginTop: 10,
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: 16 }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            <Clock
-                              size={12}
-                              color="#5A6A7A"
-                              aria-hidden="true"
-                            />
-                            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
-                              Pickup{" "}
-                              <strong style={{ color: "#0B1E3D" }}>
-                                {to12h(trip.pickupTime)}
-                              </strong>
-                            </span>
+                            {/* Pickup → Dropoff */}
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 6,
+                                marginBottom: 12,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: 8,
+                                }}
+                              >
+                                <MapPin
+                                  size={13}
+                                  color="#00C2A8"
+                                  style={{ marginTop: 2, flexShrink: 0 }}
+                                  aria-hidden="true"
+                                />
+                                <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                                  {truncate(trip.pickupAddress)}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: 8,
+                                }}
+                              >
+                                <MapPin
+                                  size={13}
+                                  color="#E74C3C"
+                                  style={{ marginTop: 2, flexShrink: 0 }}
+                                  aria-hidden="true"
+                                />
+                                <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                                  {truncate(trip.dropoffAddress)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Times */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 16,
+                                marginBottom: 10,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                }}
+                              >
+                                <Clock size={12} color="#5A6A7A" aria-hidden="true" />
+                                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                                  Pickup{" "}
+                                  <strong style={{ color: "#0B1E3D" }}>
+                                    {to12h(trip.pickupTime)}
+                                  </strong>
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                }}
+                              >
+                                <Clock size={12} color="#5A6A7A" aria-hidden="true" />
+                                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                                  Arrive{" "}
+                                  <strong style={{ color: "#0B1E3D" }}>
+                                    {to12h(trip.arrivalTime)}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Meta: distance + duration */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                paddingTop: 10,
+                                borderTop: "1px solid #f4f6f8",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  fontSize: 12,
+                                  color: "#9aa7b4",
+                                }}
+                              >
+                                <Route size={12} aria-hidden="true" />
+                                {trip.distanceKm?.toFixed(1)} km ·{" "}
+                                {trip.durationMinutes} min
+                              </span>
+                              <ChevronRight size={16} color="#9aa7b4" aria-hidden="true" />
+                            </div>
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            <Clock
-                              size={12}
-                              color="#5A6A7A"
-                              aria-hidden="true"
+                        </Link>
+                        {needsPayment && (
+                          <div style={{ padding: "0 18px 16px" }}>
+                            <ContinueCheckoutButton
+                              bookingId={trip.requestId}
+                              amountEgp={trip.bookingAmountEgp}
+                              walletBalance={walletBalance}
                             />
-                            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
-                              Arrive{" "}
-                              <strong style={{ color: "#0B1E3D" }}>
-                                {to12h(trip.arrivalTime)}
-                              </strong>
-                            </span>
                           </div>
-                        </div>
-                        <ChevronRight
-                          size={18}
-                          color="#9aa7b4"
-                          aria-hidden="true"
-                        />
+                        )}
                       </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
             <Pagination page={page} totalPages={totalPages} />
           </>
@@ -592,3 +510,4 @@ export default async function MyTripsPage({
     </div>
   );
 }
+

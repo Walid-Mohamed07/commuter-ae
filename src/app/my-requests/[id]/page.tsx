@@ -1,5 +1,4 @@
 import { redirect, notFound } from "next/navigation";
-import { Types } from "mongoose";
 import {
   Car,
   MapPin,
@@ -10,14 +9,14 @@ import {
   Notebook,
 } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { expireStaleRequest, getUserRequest } from "@/lib/services/requests";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import RouteMap from "@/components/shared/RouteMap";
 import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
-import { getOrCreateWallet } from "@/lib/wallet/wallet";
+import type { GeoPoint as Pt, StationSelection } from "@/types/geo";
+import type { PaymentStatus, BookingStatus } from "@/types/booking";
 
 export const metadata = { title: "Request details — Commuter" };
 export const dynamic = "force-dynamic";
@@ -39,17 +38,6 @@ function prettyDate(date: string): string {
     day: "numeric",
   });
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -108,12 +96,6 @@ function Pill({
   );
 }
 
-interface Pt {
-  address: string;
-  lat: number;
-  lng: number;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function RequestDetailPage({
@@ -124,56 +106,39 @@ export default async function RequestDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-requests/${id}`);
-  if (!Types.ObjectId.isValid(id)) notFound();
+  await expireStaleRequest(id, session.userId);
+  const detail = await getUserRequest(session.userId, id);
+  if (!detail) notFound();
 
-  await connectDB();
-
-  // Lazy-expire this booking if still pending after 2 h
-  await Booking.updateOne(
+  const { request, trips: rawTrips, walletBalance } = detail;
+  const { dates, amountEgp, paymentStatus, status, createdAt } = request;
+  // Group materialized trips by date for detail display
+  const tripsByDate = new Map<
+    string,
     {
-      _id: id,
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
-  const [b, wallet] = await Promise.all([
-    Booking.findOne({
-      _id: id,
-      userId: session.userId,
-    }).lean<Record<string, unknown>>(),
-    getOrCreateWallet(session.userId),
-  ]);
-
-  if (!b) notFound();
-
-  const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const date = b.date as string;
-  const amountEgp = b.amountEgp as number;
-  const paymentStatus = (b.paymentStatus as PaymentStatus) ?? "pending";
-  const status = (b.status as BookingStatus) ?? "pending_payment";
-  const createdAt =
-    b.createdAt instanceof Date
-      ? b.createdAt.toISOString()
-      : String(b.createdAt);
-  const trips = ((b.trips as Record<string, unknown>[]) ?? []).map((t) => ({
-    pickup: t.pickup as Pt,
-    dropoff: t.dropoff as Pt,
-    vehicleType: t.vehicleType as string,
-    rideType: t.rideType as string,
-    arrivalTime: t.arrivalTime as string,
-    pickupTime: t.pickupTime as string,
-    distanceKm: t.distanceKm as number,
-    durationMinutes: t.durationMinutes as number,
-    priceEgp: t.priceEgp as number,
-    extraPassengers: (t.extraPassengers as number) ?? 0,
-  }));
+      date: string;
+      cycleIndex: number;
+      pickup: Pt;
+      dropoff: Pt;
+      vehicleType: string;
+      rideType: string;
+      arrivalTime: string;
+      pickupTime: string;
+      distanceKm: number;
+      durationMinutes: number;
+      priceEgp: number;
+      extraPassengers: number;
+      pickupStation?: StationSelection;
+      dropoffStation?: StationSelection;
+      walkingMinToStation?: number;
+      walkingMinFromStation?: number;
+    }[]
+  >();
+  for (const t of rawTrips) {
+    if (!tripsByDate.has(t.date)) tripsByDate.set(t.date, []);
+    tripsByDate.get(t.date)!.push(t);
+  }
+  const sortedDates = Array.from(tripsByDate.keys()).sort();
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -196,7 +161,8 @@ export default async function RequestDetailPage({
             }}
           >
             <CalendarDays size={14} aria-hidden="true" />
-            {prettyDate(date)}
+            {dates.map((d) => prettyDate(d)).join(" · ")}
+            {dates.length > 1 && ` (× ${dates.length} days)`}
           </span>
           <div
             style={{
@@ -224,191 +190,226 @@ export default async function RequestDetailPage({
           </div>
         </div>
 
-        {/* Trips */}
+        {/* Trips — grouped by date */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {trips.map((t, i) => {
-            const vLabel =
-              VEHICLES[t.vehicleType as VehicleKey]?.label ?? t.vehicleType;
-            return (
-              <div
-                key={i}
+          {sortedDates.flatMap((date) => {
+            const dateCycles = tripsByDate.get(date) ?? [];
+            return [
+              <p
+                key={`date-${date}`}
                 style={{
-                  background: "#fff",
-                  borderRadius: 16,
-                  border: "1px solid #eef0f3",
-                  overflow: "hidden",
+                  margin: "8px 0 4px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#5A6A7A",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
-                <RouteMap
-                  pickup={t.pickup}
-                  dropoff={t.dropoff}
-                  height={220}
-                  interactive
-                />
-
-                <div style={{ padding: "16px 18px" }}>
-                  {/* Trip header */}
+                <CalendarDays size={13} aria-hidden="true" />
+                {prettyDate(date)}
+              </p>,
+              ...dateCycles.map((t) => {
+                const vLabel =
+                  VEHICLES[t.vehicleType as VehicleKey]?.label ?? t.vehicleType;
+                return (
                   <div
+                    key={`${date}-${t.cycleIndex}`}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: 14,
+                      background: "#fff",
+                      borderRadius: 16,
+                      border: "1px solid #eef0f3",
+                      overflow: "hidden",
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "#5A6A7A",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      Trip {i + 1}
-                    </span>
-                    <span
-                      style={{
-                        fontWeight: 800,
-                        fontSize: 16,
-                        color: "#00C2A8",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {t.priceEgp} EGP
-                    </span>
-                  </div>
+                    <RouteMap
+                      pickup={t.pickup}
+                      dropoff={t.dropoff}
+                      height={180}
+                    />
 
-                  {/* Route */}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 10,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <MapPin
-                        size={16}
-                        color="#00C2A8"
-                        style={{ marginTop: 2, flexShrink: 0 }}
-                        aria-hidden="true"
-                      />
-                      <div>
-                        <p
+                    <div style={{ padding: "16px 18px" }}>
+                      {/* Trip header */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <span
                           style={{
-                            margin: 0,
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: 700,
-                            color: "#9aa7b4",
+                            color: "#5A6A7A",
                             textTransform: "uppercase",
                             letterSpacing: "0.05em",
                           }}
                         >
-                          Pickup
-                        </p>
-                        <p
+                          Trip {t.cycleIndex + 1}
+                        </span>
+                        <span
                           style={{
-                            margin: "2px 0 0",
-                            fontSize: 14,
-                            color: "#0B1E3D",
+                            fontWeight: 800,
+                            fontSize: 16,
+                            color: "#00C2A8",
+                            fontVariantNumeric: "tabular-nums",
                           }}
                         >
-                          {t.pickup?.address ?? "—"}
-                        </p>
+                          {t.priceEgp} EGP
+                        </span>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <MapPin
-                        size={16}
-                        color="#E74C3C"
-                        style={{ marginTop: 2, flexShrink: 0 }}
-                        aria-hidden="true"
-                      />
-                      <div>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#9aa7b4",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                          }}
-                        >
-                          Dropoff
-                        </p>
-                        <p
-                          style={{
-                            margin: "2px 0 0",
-                            fontSize: 14,
-                            color: "#0B1E3D",
-                          }}
-                        >
-                          {t.dropoff?.address ?? "—"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Detail grid */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 12,
-                      borderTop: "1px solid #f4f6f8",
-                      paddingTop: 14,
-                    }}
-                  >
-                    <Detail
-                      icon={<Car size={15} color="#0B1E3D" />}
-                      label="Vehicle"
-                      value={`${vLabel}  (${t.rideType})`}
-                    />
-                    <Detail
-                      icon={<Users size={15} color="#0B1E3D" />}
-                      label="Extra passengers"
-                      value={String(t.extraPassengers)}
-                    />
-                    <Detail
-                      icon={<Clock size={15} color="#0B1E3D" />}
-                      label="Pickup time"
-                      value={to12h(t.pickupTime)}
-                    />
-                    <Detail
-                      icon={<Clock size={15} color="#0B1E3D" />}
-                      label="Arrival time"
-                      value={to12h(t.arrivalTime)}
-                    />
-                    <Detail
-                      icon={<Route size={15} color="#0B1E3D" />}
-                      label="Distance"
-                      value={`+${t.distanceKm} km`}
-                    />
-                    <Detail
-                      icon={<Clock size={15} color="#0B1E3D" />}
-                      label="Drive time"
-                      value={`+${t.durationMinutes} min`}
-                    />
-                  </div>
-                  {status === "pending_payment" ||
-                  status === "submitted" ||
-                  status === "matching" ? (
-                    <div className="mt-3">
-                      <Detail
-                        icon={<Notebook size={15} color="#0B1E3D" />}
-                        label="Note"
-                        value={
-                          "The exact Arrival time, Distance and Drive time will be calculated after a driver is assigned."
-                        }
-                      />
+                      {/* Route */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 10,
+                          marginBottom: 16,
+                        }}
+                      >
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <MapPin
+                            size={16}
+                            color="#00C2A8"
+                            style={{ marginTop: 2, flexShrink: 0 }}
+                            aria-hidden="true"
+                          />
+                          <div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#9aa7b4",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                              }}
+                            >
+                              Pickup
+                            </p>
+                            <p
+                              style={{
+                                margin: "2px 0 0",
+                                fontSize: 14,
+                                color: "#0B1E3D",
+                              }}
+                            >
+                              {t.pickup?.address ?? "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <MapPin
+                            size={16}
+                            color="#E74C3C"
+                            style={{ marginTop: 2, flexShrink: 0 }}
+                            aria-hidden="true"
+                          />
+                          <div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#9aa7b4",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                              }}
+                            >
+                              Dropoff
+                            </p>
+                            <p
+                              style={{
+                                margin: "2px 0 0",
+                                fontSize: 14,
+                                color: "#0B1E3D",
+                              }}
+                            >
+                              {t.dropoff?.address ?? "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detail grid */}
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: 12,
+                          borderTop: "1px solid #f4f6f8",
+                          paddingTop: 14,
+                        }}
+                      >
+                        <Detail
+                          icon={<Car size={15} color="#0B1E3D" />}
+                          label="Vehicle"
+                          value={`${vLabel}  (${t.rideType})`}
+                        />
+                        <Detail
+                          icon={<Users size={15} color="#0B1E3D" />}
+                          label="Extra passengers"
+                          value={String(t.extraPassengers)}
+                        />
+                        <Detail
+                          icon={<Clock size={15} color="#0B1E3D" />}
+                          label="Pickup time"
+                          value={to12h(t.pickupTime)}
+                        />
+                        <Detail
+                          icon={<Clock size={15} color="#0B1E3D" />}
+                          label="Arrival time"
+                          value={to12h(t.arrivalTime)}
+                        />
+                        <Detail
+                          icon={<Route size={15} color="#0B1E3D" />}
+                          label="Distance"
+                          value={`+${t.distanceKm} km`}
+                        />
+                        <Detail
+                          icon={<Clock size={15} color="#0B1E3D" />}
+                          label="Drive time"
+                          value={`+${t.durationMinutes} min`}
+                        />
+                        {t.rideType === "shared" && t.pickupStation && (
+                          <Detail
+                            icon={<MapPin size={15} color="#00C2A8" />}
+                            label="Pickup station"
+                            value={`${t.pickupStation.name} · ${t.walkingMinToStation ?? 0} min walk`}
+                          />
+                        )}
+                        {t.rideType === "shared" && t.dropoffStation && (
+                          <Detail
+                            icon={<MapPin size={15} color="#E74C3C" />}
+                            label="Dropoff station"
+                            value={`${t.dropoffStation.name} · ${t.walkingMinFromStation ?? 0} min walk`}
+                          />
+                        )}
+                      </div>
+                      {status === "pending_payment" ||
+                      status === "submitted" ||
+                      status === "matching" ? (
+                        <div className="mt-3">
+                          <Detail
+                            icon={<Notebook size={15} color="#0B1E3D" />}
+                            label="Note"
+                            value={
+                              "The exact Arrival time, Distance and Drive time will be calculated after a driver is assigned."
+                            }
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              </div>
-            );
+                  </div>
+                );
+              }),
+            ];
           })}
         </div>
 

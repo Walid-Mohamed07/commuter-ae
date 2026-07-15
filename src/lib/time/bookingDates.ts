@@ -6,32 +6,16 @@ export function earliestBookingDate(now: Date = new Date()): string {
   return format(addDays(startOfDay(now), offset), "yyyy-MM-dd");
 }
 
-/** 7 selectable dates starting FROM the given start date (defaults to earliestBookingDate). */
-export function bookingWindow(
-  startDate?: string,
-  now: Date = new Date(),
-): string[] {
-  const start = startDate ?? earliestBookingDate(now);
-  const startDateObj = new Date(`${start}T00:00:00`);
+/** 7 selectable dates starting from earliestBookingDate(now). */
+export function bookingWindow(now: Date = new Date()): string[] {
+  const earliest = earliestBookingDate(now);
+  const start = new Date(`${earliest}T00:00:00`);
   return Array.from({ length: 7 }, (_, i) =>
-    format(addDays(startDateObj, i), "yyyy-MM-dd"),
+    format(addDays(start, i), "yyyy-MM-dd"),
   );
 }
 
-/** Whether `startDate` ("YYYY-MM-DD") is a valid anchor — must be on or after the earliest date. */
-export function isValidStartDate(
-  startDate: string,
-  now: Date = new Date(),
-): boolean {
-  return startDate >= earliestBookingDate(now);
-}
-
-/** Whether `date` ("YYYY-MM-DD") falls inside the 7-day window anchored at `startDate`. */
-export function isDateInWindow(
-  date: string,
-  startDate?: string,
-  now: Date = new Date(),
-): boolean {
-  if (startDate && !isValidStartDate(startDate, now)) return false;
-  return bookingWindow(startDate, now).includes(date);
+/** Whether `date` ("YYYY-MM-DD") falls inside the current 7-day booking window. */
+export function isDateInWindow(date: string, now: Date = new Date()): boolean {
+  return bookingWindow(now).includes(date);
 }

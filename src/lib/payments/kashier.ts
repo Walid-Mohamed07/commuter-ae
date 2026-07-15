@@ -1,5 +1,6 @@
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
+import { Trip } from "@/models/Trip";
 import { WalletTransaction } from "@/models/WalletTransaction";
 import { creditWallet } from "@/lib/wallet/wallet";
 import { Types } from "mongoose";
@@ -56,7 +57,7 @@ export async function verifyAndSettleBooking(
   const query: Record<string, unknown> = { _id: bookingId };
   if (userId) query.userId = new Types.ObjectId(userId);
 
-  const booking = await Booking.findOne(query);
+  const booking = await Request.findOne(query);
   if (!booking) return "pending";
 
   // Already settled — nothing to do.
@@ -69,61 +70,21 @@ export async function verifyAndSettleBooking(
 
   if (outcome === "paid") {
     // Conditional update — only settle if still unsettled (race-safe vs webhook)
-    await Booking.findOneAndUpdate(
+    const settled = await Request.findOneAndUpdate(
       { _id: bookingId, paymentStatus: { $in: ["pending", "failed"] } },
       { paymentStatus: "paid", status: "submitted", paidAt: new Date() },
     );
+    if (settled) {
+      await Trip.updateMany(
+        { requestId: settled._id },
+        { paymentStatus: "paid", status: "submitted" },
+      );
+    }
     return "paid";
   }
   if (outcome === "failed") {
-    await Booking.findOneAndUpdate(
+    await Request.findOneAndUpdate(
       { _id: bookingId, paymentStatus: "pending" },
-      { paymentStatus: "failed" },
-    );
-    return "failed";
-  }
-  return "pending";
-}
-
-/**
- * Same as verifyAndSettleBooking but for a group of bookings created together
- * (multi-date booking) sharing a groupId. Settles ALL bookings in the group.
- */
-export async function verifyAndSettleGroup(
-  groupId: string,
-  userId?: string,
-): Promise<Settled> {
-  await connectDB();
-
-  const query: Record<string, unknown> = { groupId };
-  if (userId) query.userId = new Types.ObjectId(userId);
-
-  const bookings = await Booking.find(query);
-  if (!bookings.length) return "pending";
-
-  const anyPaid = bookings.some((b) => b.paymentStatus === "paid");
-  const anyPending = bookings.some(
-    (b) => b.paymentStatus !== "paid" && b.paymentStatus !== "failed",
-  );
-
-  if (anyPaid && !anyPending) return "paid";
-  if (!anyPending && !anyPaid) return "failed";
-
-  const sessionId = bookings.find((b) => b.kashierSessionId)?.kashierSessionId;
-  if (!sessionId) return "pending";
-
-  const outcome = await queryKashierStatus(sessionId);
-
-  if (outcome === "paid") {
-    await Booking.updateMany(
-      { groupId, paymentStatus: { $in: ["pending", "failed"] } },
-      { paymentStatus: "paid", status: "submitted", paidAt: new Date() },
-    );
-    return "paid";
-  }
-  if (outcome === "failed") {
-    await Booking.updateMany(
-      { groupId, paymentStatus: "pending" },
       { paymentStatus: "failed" },
     );
     return "failed";
@@ -203,4 +164,3 @@ export async function reconcilePendingTopups(userId: string): Promise<number> {
   }
   return credited;
 }
-

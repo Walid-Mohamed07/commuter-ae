@@ -199,7 +199,6 @@ export default function RouteMap({
         )}
         <Marker
           position={pickup as LatLng}
-          optimized={false}
           icon={{
             url: PICKUP_ICON,
             scaledSize: new google.maps.Size(36, 36),
@@ -208,7 +207,6 @@ export default function RouteMap({
         />
         <Marker
           position={dropoff as LatLng}
-          optimized={false}
           icon={{
             url: DROPOFF_ICON,
             scaledSize: new google.maps.Size(36, 48),

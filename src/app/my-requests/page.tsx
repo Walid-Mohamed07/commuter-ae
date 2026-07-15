@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Clock, Car, ChevronRight, CalendarClock } from "lucide-react";
+import { MapPin, Clock, Car } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import AppHeader from "@/components/layout/AppHeader";
-import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { expireStaleForUser, listUserRequests } from "@/lib/services/requests";
 import { VEHICLES } from "@/lib/config/vehicles";
 import EmptyState from "@/components/shared/EmptyState";
 import FilterBar, { type FilterDef } from "@/components/shared/FilterBar";
 import Pagination from "@/components/shared/Pagination";
+import RouteMap from "@/components/shared/RouteMap";
 import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import type { VehicleKey } from "@/lib/config/vehicles";
+import type { PaymentStatus, BookingStatus } from "@/types/booking";
 
 export const metadata = { title: "My requests — Commuter" };
 export const dynamic = "force-dynamic";
@@ -30,17 +31,6 @@ function to12h(hhmm: string): string {
 function truncate(s: string, max = 34): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
-
-type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "expired";
-type BookingStatus =
-  | "pending_payment"
-  | "submitted"
-  | "matching"
-  | "confirmed"
-  | "active"
-  | "completed"
-  | "cancelled"
-  | "time_out";
 
 const PAY_PILL: Record<
   PaymentStatus,
@@ -99,29 +89,6 @@ function Pill({
   );
 }
 
-// ── serialisable shape ────────────────────────────────────────────────────────
-
-interface TripRow {
-  vehicleType: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  pickup: { lat: number; lng: number } | null;
-  dropoff: { lat: number; lng: number } | null;
-  pickupTime: string;
-  arrivalTime: string;
-  priceEgp: number;
-}
-
-interface BookingRow {
-  id: string;
-  date: string;
-  trips: TripRow[];
-  amountEgp: number;
-  paymentStatus: PaymentStatus;
-  status: BookingStatus;
-  createdAt: string;
-}
-
 // ── page ─────────────────────────────────────────────────────────────────────
 
 const PAYMENT_OPTIONS: FilterDef = {
@@ -146,7 +113,6 @@ const STATUS_OPTIONS: FilterDef = {
     { value: "active", label: "Active" },
     { value: "completed", label: "Completed" },
     { value: "cancelled", label: "Cancelled" },
-    { value: "time_out", label: "Timed out" },
   ],
 };
 
@@ -165,75 +131,23 @@ export default async function MyTripsPage({
     typeof params.status === "string" ? params.status : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  await connectDB();
-
-  // Lazy-expire bookings older than 2 h that are still pending_payment
-  await Booking.updateMany(
-    {
-      userId: session.userId,
-      status: "pending_payment",
-      paymentStatus: { $in: ["pending", "failed"] },
-      $expr: {
-        $lte: ["$createdAt", { $subtract: ["$$NOW", 2 * 60 * 60 * 1000] }],
-      },
-    },
-    { $set: { status: "time_out", paymentStatus: "expired" } },
-  );
-
+  await expireStaleForUser(session.userId);
   const wallet = await getOrCreateWallet(session.userId);
   const walletBalance: number = wallet.balanceEgp ?? 0;
-
-  const query: Record<string, unknown> = { userId: session.userId };
-  if (payment && payment in PAY_PILL) query.paymentStatus = payment;
-  if (statusFilter && statusFilter in STATUS_PILL) query.status = statusFilter;
-
-  const total = await Booking.countDocuments(query);
+  const result = await listUserRequests(session.userId, {
+    page,
+    pageSize: PAGE_SIZE,
+    paymentStatus:
+      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
+    status:
+      statusFilter && statusFilter in STATUS_PILL
+        ? (statusFilter as BookingStatus)
+        : undefined,
+  });
+  const { rows: bookings, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const raw = await Booking.find(query)
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * PAGE_SIZE)
-    .limit(PAGE_SIZE)
-    .lean();
-
   const hasFilters = Boolean(payment || statusFilter);
-
-  // Serialise — strip ObjectId / Date to plain strings
-  const bookings: BookingRow[] = (raw as Record<string, unknown>[]).map(
-    (b) => ({
-      id: String(b._id),
-      date: b.date as string,
-      amountEgp: b.amountEgp as number,
-      paymentStatus: (b.paymentStatus as PaymentStatus) ?? "pending",
-      status: (b.status as BookingStatus) ?? "pending_payment",
-      createdAt:
-        b.createdAt instanceof Date
-          ? b.createdAt.toISOString()
-          : String(b.createdAt),
-      trips: ((b.trips as Record<string, unknown>[]) ?? []).map((t) => {
-        const p = t.pickup as { address: string; lat: number; lng: number };
-        const d = t.dropoff as { address: string; lat: number; lng: number };
-        return {
-          vehicleType: t.vehicleType as string,
-          pickupAddress: p.address,
-          dropoffAddress: d.address,
-          pickup: typeof p.lat === "number" ? { lat: p.lat, lng: p.lng } : null,
-          dropoff:
-            typeof d.lat === "number" ? { lat: d.lat, lng: d.lng } : null,
-          pickupTime: t.pickupTime as string,
-          arrivalTime: t.arrivalTime as string,
-          priceEgp: t.priceEgp as number,
-        };
-      }),
-    }),
-  );
-
-  // Group by date (already sorted newest-first, so group order is preserved)
-  const groups = new Map<string, BookingRow[]>();
-  for (const b of bookings) {
-    if (!groups.has(b.date)) groups.set(b.date, []);
-    groups.get(b.date)!.push(b);
-  }
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -257,9 +171,9 @@ export default async function MyTripsPage({
           <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
             {total === 0
               ? hasFilters
-                ? "No bookings match these filters."
-                : "No bookings yet."
-              : `${total} booking${total === 1 ? "" : "s"}`}
+                ? "No requests match these filters."
+                : "No requests yet."
+              : `${total} request${total === 1 ? "" : "s"}`}
           </p>
         </div>
 
@@ -271,7 +185,7 @@ export default async function MyTripsPage({
             title={hasFilters ? "Nothing here" : "No trips yet"}
             description={
               hasFilters
-                ? "Try clearing the filters to see all your bookings."
+                ? "Try clearing the filters to see all your requests."
                 : "Book your first commute ride and it will appear here."
             }
             action={
@@ -293,357 +207,264 @@ export default async function MyTripsPage({
             }
           />
         ) : (
-          Array.from(groups.entries()).map(([date, dayBookings]) => (
-            <section key={date} style={{ marginBottom: 28 }}>
-              {/* Date group header */}
+          bookings.map((booking) => {
+            const needsPayment =
+              booking.paymentStatus === "pending" ||
+              booking.paymentStatus === "failed";
+            const timedOut = booking.status === "time_out";
+            return (
               <div
+                key={booking.id}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
+                  background: "#fff",
+                  borderRadius: 14,
+                  border: "1px solid #eef0f3",
                   marginBottom: 12,
+                  overflow: "hidden",
+                  opacity: timedOut ? 0.55 : 1,
+                  transition: "opacity 0.2s",
                 }}
               >
-                <span
+                <Link
+                  href={`/my-requests/${booking.id}`}
                   style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "#5A6A7A",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "block",
                   }}
                 >
-                  {new Date(`${date}T12:00:00`).toLocaleDateString("en-EG", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-                <div style={{ flex: 1, height: 1, background: "#eef0f3" }} />
-              </div>
-
-              {/* Booking cards for this date */}
-              {dayBookings.map((booking) => {
-                const needsPayment =
-                  booking.paymentStatus === "pending" ||
-                  booking.paymentStatus === "failed";
-                const timedOut = booking.status === "time_out";
-                const first = booking.trips[0];
-                const vLabel = first
-                  ? VEHICLES[first.vehicleType as VehicleKey]?.label ??
-                    first.vehicleType
-                  : "—";
-                return (
+                  <RouteMap
+                    pickup={booking.trips[0]?.pickup}
+                    dropoff={booking.trips[0]?.dropoff}
+                    height={120}
+                  />
+                  {/* Booking header row */}
                   <div
-                    key={booking.id}
-                    className="request-card"
                     style={{
-                      background: "#fff",
-                      borderRadius: 18,
-                      borderWidth: "3px 1px 1px 1px",
-                      borderStyle: "solid",
-                      borderColor: "#00C2A8 #eef0f3 #eef0f3 #eef0f3",
-                      marginBottom: 14,
-                      overflow: "hidden",
-                      opacity: timedOut ? 0.6 : 1,
-                      boxShadow: "0 2px 10px rgba(11,30,61,0.05)",
+                      padding: "14px 18px",
+                      borderBottom: "1px solid #f4f6f8",
                     }}
                   >
-                    <Link
-                      href={`/my-requests/${booking.id}`}
+                    <div
                       style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        display: "block",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#5A6A7A",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
                       }}
                     >
-                      {/* Status pills */}
+                      {booking.dates
+                        .map((d) =>
+                          new Date(`${d}T12:00:00`).toLocaleDateString(
+                            "en-EG",
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            },
+                          ),
+                        )
+                        .join(", ")}
+                      {booking.dates.length > 1 &&
+                        ` (× ${booking.dates.length} days)`}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
                       <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          flexWrap: "wrap",
-                          padding: "18px 18px 14px",
-                          borderBottom: "1px solid #f4f6f8",
-                        }}
+                        style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
                       >
-                        <Pill
-                          {...(STATUS_PILL[booking.status] ??
-                            STATUS_PILL.pending_payment)}
-                        />
                         <Pill
                           {...(PAY_PILL[booking.paymentStatus] ??
                             PAY_PILL.pending)}
                         />
+                        <Pill
+                          {...(STATUS_PILL[booking.status] ??
+                            STATUS_PILL.pending_payment)}
+                        />
                       </div>
+                      <span
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 16,
+                          color: "#0B1E3D",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {booking.amountEgp} EGP
+                      </span>
+                    </div>
+                  </div>
 
-                      {/* Body */}
-                      <div style={{ padding: "16px 18px 18px" }}>
-                        {/* Vehicle + amount */}
+                  {/* Trip rows */}
+                  {booking.trips.map((trip, i) => {
+                    const vLabel =
+                      VEHICLES[trip.vehicleType as VehicleKey]?.label ??
+                      trip.vehicleType;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          padding: "14px 18px",
+                          borderBottom:
+                            i < booking.trips.length - 1
+                              ? "1px solid #f4f6f8"
+                              : "none",
+                        }}
+                      >
+                        {/* Vehicle + price */}
                         <div
                           style={{
                             display: "flex",
-                            alignItems: "center",
                             justifyContent: "space-between",
-                            marginBottom: 16,
+                            alignItems: "center",
+                            marginBottom: 10,
                           }}
                         >
                           <div
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 10,
+                              gap: 6,
                             }}
                           >
-                            <div
+                            <Car size={14} color="#00C2A8" aria-hidden="true" />
+                            <span
                               style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 10,
-                                background: "#E6F8F5",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: "#0B1E3D",
                               }}
                             >
-                              <Car size={17} color="#00806E" aria-hidden="true" />
-                            </div>
-                            <div>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                  color: "#0B1E3D",
-                                }}
-                              >
-                                {vLabel}
-                              </p>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: 12,
-                                  color: "#9aa7b4",
-                                }}
-                              >
-                                {booking.trips.length} trip
-                                {booking.trips.length === 1 ? "" : "s"}
-                              </p>
-                            </div>
+                              {vLabel}
+                            </span>
                           </div>
                           <span
                             style={{
-                              fontWeight: 800,
-                              fontSize: 18,
-                              color: "#0B1E3D",
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: "#00C2A8",
                               fontVariantNumeric: "tabular-nums",
                             }}
                           >
-                            {booking.amountEgp}{" "}
-                            <span style={{ fontSize: 12, color: "#9aa7b4" }}>
-                              EGP
-                            </span>
+                            {trip.priceEgp} EGP
                           </span>
                         </div>
 
-                        {/* Meta: trip count + requested date/time */}
+                        {/* Pickup → Dropoff */}
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 8,
+                            }}
+                          >
+                            <MapPin
+                              size={13}
+                              color="#00C2A8"
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                              aria-hidden="true"
+                            />
+                            <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                              {truncate(trip.pickupAddress)}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 8,
+                            }}
+                          >
+                            <MapPin
+                              size={13}
+                              color="#E74C3C"
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                              aria-hidden="true"
+                            />
+                            <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                              {truncate(trip.dropoffAddress)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Times */}
                         <div
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 14,
-                            marginBottom: 12,
-                            fontSize: 12,
-                            color: "#9aa7b4",
+                            gap: 16,
+                            marginTop: 10,
                           }}
                         >
-                          <span
+                          <div
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 5,
                             }}
                           >
-                            <Car size={12} aria-hidden="true" />
-                            {booking.trips.length} trip
-                            {booking.trips.length === 1 ? "" : "s"}
-                          </span>
-                          <span
+                            <Clock
+                              size={12}
+                              color="#5A6A7A"
+                              aria-hidden="true"
+                            />
+                            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                              Pickup{" "}
+                              <strong style={{ color: "#0B1E3D" }}>
+                                {to12h(trip.pickupTime)}
+                              </strong>
+                            </span>
+                          </div>
+                          <div
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: 5,
                             }}
                           >
-                            <CalendarClock size={12} aria-hidden="true" />
-                            {new Date(booking.createdAt).toLocaleString(
-                              "en-EG",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                              },
-                            )}
-                          </span>
+                            <Clock
+                              size={12}
+                              color="#5A6A7A"
+                              aria-hidden="true"
+                            />
+                            <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                              Arrive{" "}
+                              <strong style={{ color: "#0B1E3D" }}>
+                                {to12h(trip.arrivalTime)}
+                              </strong>
+                            </span>
+                          </div>
                         </div>
-
-                        {/* Route with connector */}
-                        {first && (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 10,
-                              padding: "14px",
-                              background: "#fafbfc",
-                              borderRadius: 12,
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                paddingTop: 4,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 9,
-                                  height: 9,
-                                  borderRadius: "50%",
-                                  background: "#00C2A8",
-                                }}
-                              />
-                              <span
-                                style={{
-                                  width: 2,
-                                  flex: 1,
-                                  minHeight: 18,
-                                  background: "#e3e8ee",
-                                  margin: "2px 0",
-                                }}
-                              />
-                              <span
-                                style={{
-                                  width: 9,
-                                  height: 9,
-                                  borderRadius: 2,
-                                  background: "#E74C3C",
-                                }}
-                              />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p
-                                style={{
-                                  margin: "0 0 12px",
-                                  fontSize: 13,
-                                  color: "#0B1E3D",
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {truncate(first.pickupAddress)}
-                              </p>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontSize: 13,
-                                  color: "#0B1E3D",
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {truncate(first.dropoffAddress)}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Times */}
-                        {first && (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              marginTop: 12,
-                            }}
-                          >
-                            {[
-                              ["Pickup", to12h(first.pickupTime)],
-                              ["Arrive", to12h(first.arrivalTime)],
-                            ].map(([lbl, val]) => (
-                              <div
-                                key={lbl}
-                                style={{
-                                  flex: 1,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  padding: "8px 10px",
-                                  background: "#f6f8fa",
-                                  borderRadius: 10,
-                                }}
-                              >
-                                <Clock
-                                  size={13}
-                                  color="#5A6A7A"
-                                  aria-hidden="true"
-                                />
-                                <span
-                                  style={{ fontSize: 11, color: "#9aa7b4" }}
-                                >
-                                  {lbl}
-                                </span>
-                                <strong
-                                  style={{
-                                    fontSize: 13,
-                                    color: "#0B1E3D",
-                                    marginLeft: "auto",
-                                    fontVariantNumeric: "tabular-nums",
-                                  }}
-                                >
-                                  {val}
-                                </strong>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
-
-                      {/* Footer */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "flex-end",
-                          gap: 4,
-                          padding: "12px 18px",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#00806E",
-                          background: "#F5FBFA",
-                          borderTop: "1px solid #eef6f5",
-                        }}
-                      >
-                        View details
-                        <ChevronRight size={15} aria-hidden="true" />
-                      </div>
-                    </Link>
-
-                    {needsPayment && (
-                      <div style={{ padding: "0 18px 16px" }}>
-                        <ContinueCheckoutButton
-                          bookingId={booking.id}
-                          amountEgp={booking.amountEgp}
-                          walletBalance={walletBalance}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
-          ))
+                    );
+                  })}
+                </Link>
+                {needsPayment && (
+                  <ContinueCheckoutButton
+                    bookingId={booking.id}
+                    amountEgp={booking.amountEgp}
+                    walletBalance={walletBalance}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
 
         {bookings.length > 0 && (

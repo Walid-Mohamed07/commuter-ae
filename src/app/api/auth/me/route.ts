@@ -4,28 +4,18 @@ import { User } from "@/models/User";
 import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
 import { carTypeToCapacity, type CarType } from "@/lib/config/driver";
+import { getProfile } from "@/lib/services/profile";
 
 export async function GET() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await connectDB();
-  const user = await User.findById(session.userId)
-    .select("name email phone role")
-    .lean();
-  if (!user) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const profile = await getProfile(session.userId, session.role);
+  if (!profile)
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  if (session.role !== "driver") return NextResponse.json(user);
-
-  const driver = await Driver.findOne({ userId: session.userId }).lean();
-  if (!driver)
-    return NextResponse.json(
-      { error: "Driver profile not found." },
-      { status: 404 },
-    );
-
-  return NextResponse.json({ ...user, driver });
+  return NextResponse.json({ data: profile });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -66,8 +56,6 @@ export async function PATCH(req: NextRequest) {
       documents,
     } = body;
 
-    const ARABIC_CHAR = /^[\u0600-\u06FF]$/;
-
     const driverUpdate: Record<string, unknown> = {};
     if (gender === "male" || gender === "female") driverUpdate.gender = gender;
     if (["private", "taxi", "van", "microbus"].includes(carType)) {
@@ -77,13 +65,17 @@ export async function PATCH(req: NextRequest) {
     }
     if (carBrand?.trim()) driverUpdate.carBrand = carBrand.trim();
     if (carModel?.trim()) driverUpdate.carModel = carModel.trim();
-    if (Number.isInteger(modelYear) && modelYear > 1900 && modelYear < 2100)
-      driverUpdate.modelYear = modelYear;
+    if (Number.isInteger(Number(modelYear)) && Number(modelYear) > 0)
+      driverUpdate.modelYear = Number(modelYear);
     if (vehicleColor?.trim()) driverUpdate.vehicleColor = vehicleColor.trim();
-    if (ARABIC_CHAR.test(plateChar1)) driverUpdate.plateChar1 = plateChar1;
-    if (ARABIC_CHAR.test(plateChar2)) driverUpdate.plateChar2 = plateChar2;
-    if (ARABIC_CHAR.test(plateChar3)) driverUpdate.plateChar3 = plateChar3;
-    if (/^\d{4}$/.test(plateDigits)) driverUpdate.plateDigits = plateDigits;
+    if (typeof plateChar1 === "string" && /^[\u0600-\u06FF]$/.test(plateChar1))
+      driverUpdate.plateChar1 = plateChar1;
+    if (typeof plateChar2 === "string" && /^[\u0600-\u06FF]$/.test(plateChar2))
+      driverUpdate.plateChar2 = plateChar2;
+    if (typeof plateChar3 === "string" && /^[\u0600-\u06FF]$/.test(plateChar3))
+      driverUpdate.plateChar3 = plateChar3;
+    if (typeof plateDigits === "string" && /^\d{3,4}$/.test(plateDigits))
+      driverUpdate.plateDigits = plateDigits;
     if (licenseExpiry?.trim())
       driverUpdate.licenseExpiry = licenseExpiry.trim();
 
@@ -94,8 +86,6 @@ export async function PATCH(req: NextRequest) {
       "carLicenseFront",
       "carLicenseBack",
       "criminalRecord",
-      "profilePic",
-      "carImage",
     ];
     if (documents && typeof documents === "object") {
       for (const key of ALLOWED_DOC_KEYS) {

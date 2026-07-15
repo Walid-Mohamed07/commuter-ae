@@ -10,6 +10,7 @@ import {
   Clock,
   Route,
   Users,
+  Navigation,
 } from "lucide-react";
 import { useTripStore } from "@/lib/store/useTripStore";
 import type { TripPoint } from "@/lib/store/useTripStore";
@@ -38,16 +39,21 @@ function defaultTrip(
     id: makeTripId(),
     pickup,
     dropoff,
-    vehicleType: "private_car",
+    vehicleType: "",
     arrivalTime: "",
     pickupTime: "",
     distanceKm: null,
     durationMinutes: null,
     priceEgp: null,
     routeCoordinates: null,
+    routeLegs: [],
     extraPassengers: 0,
+    numberOfPassengers: 1,
+    stops: [],
     pickupStation: null,
     dropoffStation: null,
+    pickupStationOptions: [],
+    dropoffStationOptions: [],
     walkingMinToStation: null,
     walkingMinFromStation: null,
     passengers: [],
@@ -59,7 +65,6 @@ function defaultTrip(
 export default function CreateClient({ userEmail }: Props) {
   const { pickup, dropoff } = useTripStore();
   const [mounted, setMounted] = useState(false);
-  const [startDate, setStartDate] = useState<string>(earliestBookingDate());
   const [selectedDates, setSelectedDates] = useState<string[]>([
     earliestBookingDate(),
   ]);
@@ -164,20 +169,29 @@ export default function CreateClient({ userEmail }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           dates: selectedDates,
-          startDate,
           trips: trips.map((t) => ({
             pickup: t.pickup,
             dropoff: t.dropoff,
             vehicleType: t.vehicleType,
             arrivalTime: t.arrivalTime,
+            pickupTime: t.pickupTime,
             distanceKm: t.distanceKm,
             durationMinutes: t.durationMinutes,
             extraPassengers: t.extraPassengers,
             passengers: t.passengers,
+            numberOfPassengers: t.numberOfPassengers,
+            stops: t.stops.map((stop) => ({
+              point: stop.point,
+              alighting: stop.alighting,
+              boarding: stop.boarding,
+              waitingMinutes: stop.waitingMinutes,
+            })),
             ...(t.pickupStation
               ? {
                   pickupStation: t.pickupStation,
                   dropoffStation: t.dropoffStation,
+                  pickupStationOptions: t.pickupStationOptions,
+                  dropoffStationOptions: t.dropoffStationOptions,
                   walkingMinToStation: t.walkingMinToStation,
                   walkingMinFromStation: t.walkingMinFromStation,
                 }
@@ -198,7 +212,7 @@ export default function CreateClient({ userEmail }: Props) {
         const walletRes = await fetch("/api/payments/wallet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ groupId: data.groupId }),
+          body: JSON.stringify({ bookingId: data.bookingId }),
         });
         const walletData = await walletRes.json();
         if (!walletRes.ok) {
@@ -208,7 +222,7 @@ export default function CreateClient({ userEmail }: Props) {
           return;
         }
         navigating = true;
-        window.location.href = `/checkout/callback?groupId=${data.groupId}`;
+        window.location.href = `/checkout/callback?bookingId=${data.bookingId}`;
         return;
       }
 
@@ -216,7 +230,7 @@ export default function CreateClient({ userEmail }: Props) {
       const payRes = await fetch("/api/payments/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ groupId: data.groupId }),
+        body: JSON.stringify({ bookingId: data.bookingId }),
       });
       const payData = await payRes.json();
       if (!payRes.ok) {
@@ -270,11 +284,16 @@ export default function CreateClient({ userEmail }: Props) {
                 priceEgp: null,
                 pickupTime: "",
                 routeCoordinates: null,
+                routeLegs: [],
                 pickupStation: null,
                 dropoffStation: null,
+                pickupStationOptions: [],
+                dropoffStationOptions: [],
                 walkingMinToStation: null,
                 walkingMinFromStation: null,
                 passengers: [],
+                numberOfPassengers: 1,
+                stops: [],
                 baseDistanceKm: null,
                 passengerDetourKm: null,
               };
@@ -293,8 +312,7 @@ export default function CreateClient({ userEmail }: Props) {
   }, []);
 
   function addTrip() {
-    const vehicleType = trips[0]?.vehicleType ?? "private_car";
-    setTrips((prev) => [...prev, { ...defaultTrip(null, null), vehicleType }]);
+    setTrips((prev) => [...prev, defaultTrip(null, null)]);
   }
 
   // Validate all trips before preview
@@ -302,11 +320,51 @@ export default function CreateClient({ userEmail }: Props) {
     if (selectedDates.length === 0) return "Select at least one date.";
     for (let i = 0; i < trips.length; i++) {
       const t = trips[i];
+      if (!t.vehicleType) return `Trip ${i + 1}: vehicle type required.`;
       if (!t.pickup) return `Trip ${i + 1}: pickup location required.`;
       if (!t.dropoff) return `Trip ${i + 1}: dropoff location required.`;
-      if (!t.arrivalTime) return `Trip ${i + 1}: arrival time required.`;
-      if (!t.pickupTime)
-        return `Trip ${i + 1}: pickup time not yet computed — wait a moment.`;
+      const vehicle = vehiclesMap?.[t.vehicleType] ?? VEHICLES[t.vehicleType];
+      const isPrivate = vehicle.ride === "private";
+
+      if (isPrivate) {
+        if (!t.pickupTime) return `Trip ${i + 1}: pickup time required.`;
+        if (!t.arrivalTime || !t.distanceKm || !t.durationMinutes)
+          return `Trip ${i + 1}: route is still calculating — wait a moment.`;
+        if (
+          !Number.isInteger(t.numberOfPassengers) ||
+          t.numberOfPassengers < 1 ||
+          t.numberOfPassengers > vehicle.occupancy
+        )
+          return `Trip ${i + 1}: passenger count must be between 1 and ${vehicle.occupancy}.`;
+        if (t.stops.length > 4)
+          return `Trip ${i + 1}: no more than 4 stop points allowed.`;
+
+        let onboard = t.numberOfPassengers;
+        for (let stopIndex = 0; stopIndex < t.stops.length; stopIndex++) {
+          const stop = t.stops[stopIndex];
+          if (!stop.point)
+            return `Trip ${i + 1}, stop ${stopIndex + 1}: location required.`;
+          if (
+            !Number.isInteger(stop.alighting) ||
+            !Number.isInteger(stop.boarding) ||
+            !Number.isFinite(stop.waitingMinutes) ||
+            stop.alighting < 0 ||
+            stop.boarding < 0 ||
+            stop.waitingMinutes < 0
+          )
+            return `Trip ${i + 1}, stop ${stopIndex + 1}: invalid stop details.`;
+          if (stop.alighting > onboard - 1)
+            return `Trip ${i + 1}, stop ${stopIndex + 1}: at least one passenger must continue.`;
+          const afterAlighting = onboard - stop.alighting;
+          if (stop.boarding > vehicle.occupancy - afterAlighting)
+            return `Trip ${i + 1}, stop ${stopIndex + 1}: vehicle occupancy exceeded.`;
+          onboard = afterAlighting + stop.boarding;
+        }
+      } else {
+        if (!t.arrivalTime) return `Trip ${i + 1}: arrival time required.`;
+        if (!t.pickupTime)
+          return `Trip ${i + 1}: pickup time not yet computed — wait a moment.`;
+      }
       if (
         t.passengerDetourKm != null &&
         t.baseDistanceKm != null &&
@@ -340,11 +398,18 @@ export default function CreateClient({ userEmail }: Props) {
     setShowPreview(true);
   }
 
-  const totalEgp = trips.reduce(
-    (sum, t) =>
-      sum + finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0, t.vehicleType),
-    0,
-  );
+  const totalEgp = trips.reduce((sum, t) => {
+    const isPrivate =
+      t.vehicleType !== "" &&
+      (vehiclesMap?.[t.vehicleType] ?? VEHICLES[t.vehicleType]).ride ===
+        "private";
+    return (
+      sum +
+      (isPrivate
+        ? (t.priceEgp ?? 0)
+        : finalPrice(t.priceEgp ?? 0, t.extraPassengers ?? 0, t.vehicleType))
+    );
+  }, 0);
   const grandTotalEgp = totalEgp * Math.max(1, selectedDates.length);
 
   if (!mounted) {
@@ -423,12 +488,7 @@ export default function CreateClient({ userEmail }: Props) {
               </p>
             </div>
 
-            <DatePicker
-              startDate={startDate}
-              onStartDateChange={setStartDate}
-              value={selectedDates}
-              onChange={setSelectedDates}
-            />
+            <DatePicker value={selectedDates} onChange={setSelectedDates} />
 
             {/* Trip cycles */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -439,7 +499,7 @@ export default function CreateClient({ userEmail }: Props) {
                   const prev = trips[i - 1];
                   if (prev.arrivalTime) {
                     const prevMins = toMinutes(prev.arrivalTime);
-                    if (trip.durationMinutes) {
+                    if (trip.durationMinutes && trip.vehicleType) {
                       const vWindow = VEHICLES[trip.vehicleType].window;
                       minArrivalTime = toHHMM(
                         prevMins + trip.durationMinutes + vWindow,
@@ -563,8 +623,10 @@ export default function CreateClient({ userEmail }: Props) {
                   <strong style={{ color: "#0B1E3D" }}>
                     {grandTotalEgp} EGP
                   </strong>
-                  {selectedDates.length > 1 &&
-                    ` × ${selectedDates.length} days`}
+                  {
+                    selectedDates.length > 1
+                    // && ` × ${selectedDates.length} days`
+                  }
                 </p>
               )}
               <button
@@ -702,8 +764,22 @@ export default function CreateClient({ userEmail }: Props) {
                   ` (× ${selectedDates.length} days)`}
               </p>
 
-              {trips.map((t, i) => (
-                <div
+              {trips.map((t, i) => {
+                const isPrivate =
+                  t.vehicleType !== "" &&
+                  (vehiclesMap?.[t.vehicleType] ?? VEHICLES[t.vehicleType])
+                    .ride === "private";
+                const routePoints = [
+                  { label: "Pickup location", point: t.pickup, icon: Navigation },
+                  ...t.stops.map((stop, stopIndex) => ({
+                    label: `Stop ${stopIndex + 1}`,
+                    point: stop.point,
+                    icon: MapPin,
+                  })),
+                  { label: "Dropoff location", point: t.dropoff, icon: Flag },
+                ];
+                return (
+                  <div
                   key={t.id}
                   style={{
                     padding: "14px 16px",
@@ -738,11 +814,15 @@ export default function CreateClient({ userEmail }: Props) {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {finalPrice(
-                        t.priceEgp ?? 0,
-                        t.extraPassengers ?? 0,
-                        t.vehicleType,
-                      )}{" "}
+                      {t.vehicleType !== "" &&
+                      (vehiclesMap?.[t.vehicleType] ?? VEHICLES[t.vehicleType])
+                        .ride === "private"
+                        ? (t.priceEgp ?? 0)
+                        : finalPrice(
+                            t.priceEgp ?? 0,
+                            t.extraPassengers ?? 0,
+                            t.vehicleType,
+                          )}{" "}
                       EGP
                     </span>
                   </div>
@@ -755,20 +835,27 @@ export default function CreateClient({ userEmail }: Props) {
                       gap: 8,
                     }}
                   >
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Users size={15} color="#0B1E3D" />
-
-                      <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
-                        {t.extraPassengers} Extra passenger
-                        {t.extraPassengers === 1 ? "" : "s"}
-                      </strong>
-                    </span>
+                    {isPrivate ? (
+                      <span
+                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                      >
+                        <Users size={15} color="#0B1E3D" />
+                        <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
+                          {t.numberOfPassengers} passenger
+                          {t.numberOfPassengers === 1 ? "" : "s"}
+                        </strong>
+                      </span>
+                    ) : (
+                      <span
+                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                      >
+                        <Users size={15} color="#0B1E3D" />
+                        <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
+                          {t.extraPassengers} Extra passenger
+                          {t.extraPassengers === 1 ? "" : "s"}
+                        </strong>
+                      </span>
+                    )}
                     <span
                       style={{
                         display: "flex",
@@ -786,40 +873,102 @@ export default function CreateClient({ userEmail }: Props) {
                         {VEHICLE_LIST_LABEL(t.vehicleType)}
                       </strong>
                     </span>
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <MapPin
-                        size={15}
-                        color="#00C2A8"
-                        aria-hidden="true"
-                        style={{ flexShrink: 0 }}
-                      />
-                      {t.pickup?.address
-                        ? formatDisplayName(t.pickup.address)
-                        : "—"}
-                    </span>
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Flag
-                        size={15}
-                        color="#F5A623"
-                        aria-hidden="true"
-                        style={{ flexShrink: 0 }}
-                      />
-                      {t.dropoff?.address
-                        ? formatDisplayName(t.dropoff.address)
-                        : "—"}
-                    </span>
+                    {isPrivate ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                          padding: "10px 0",
+                          borderTop: "1px solid #e5e9ee",
+                          borderBottom: "1px solid #e5e9ee",
+                        }}
+                      >
+                        {routePoints.map((routePoint, pointIndex) => {
+                          const Icon = routePoint.icon;
+                          const leg = t.routeLegs[pointIndex];
+                          return (
+                            <div key={routePoint.label}>
+                              <span
+                                style={{ display: "flex", alignItems: "center", gap: 8 }}
+                              >
+                                <Icon
+                                  size={15}
+                                  color={
+                                    pointIndex === routePoints.length - 1
+                                      ? "#F5A623"
+                                      : pointIndex === 0
+                                        ? "#0B1E3D"
+                                        : "#00C2A8"
+                                  }
+                                  aria-hidden="true"
+                                  style={{ flexShrink: 0 }}
+                                />
+                                <strong style={{ color: "#0B1E3D", fontWeight: 600 }}>
+                                  {routePoint.label}
+                                </strong>
+                                <span>
+                                  {routePoint.point?.address
+                                    ? formatDisplayName(routePoint.point.address)
+                                    : "—"}
+                                </span>
+                              </span>
+                              {leg && pointIndex < routePoints.length - 1 && (
+                                <span
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    margin: "5px 0 0 22px",
+                                    fontSize: 12,
+                                    color: "#5A6A7A",
+                                  }}
+                                >
+                                  <Route size={13} aria-hidden="true" />
+                                  To {routePoints[pointIndex + 1].label}: {leg.distanceKm} km · {leg.durationMinutes} min
+                                  {leg.passengers != null &&
+                                    ` · ${leg.passengers} passenger${leg.passengers === 1 ? "" : "s"}`}
+                                  {leg.priceEgp != null && ` · ${leg.priceEgp} EGP`}
+                                </span>
+                              )}
+                              {t.stops[pointIndex - 1] && (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    margin: "4px 0 0 23px",
+                                    fontSize: 12,
+                                    color: "#5A6A7A",
+                                  }}
+                                >
+                                  Alighting: {t.stops[pointIndex - 1].alighting} · Boarding: {t.stops[pointIndex - 1].boarding}
+                                  {t.stops[pointIndex - 1].waitingMinutes > 0 &&
+                                    ` · Wait: ${t.stops[pointIndex - 1].waitingMinutes} min`}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <>
+                        <span
+                          style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        >
+                          <MapPin size={15} color="#00C2A8" aria-hidden="true" style={{ flexShrink: 0 }} />
+                          {t.pickup?.address
+                            ? formatDisplayName(t.pickup.address)
+                            : "—"}
+                        </span>
+                        <span
+                          style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        >
+                          <Flag size={15} color="#F5A623" aria-hidden="true" style={{ flexShrink: 0 }} />
+                          {t.dropoff?.address
+                            ? formatDisplayName(t.dropoff.address)
+                            : "—"}
+                        </span>
+                      </>
+                    )}
                     <span
                       style={{
                         display: "flex",
@@ -989,8 +1138,9 @@ export default function CreateClient({ userEmail }: Props) {
                       )}
                     </ul>
                   </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
 
               {totalEgp > 0 && (
                 <div

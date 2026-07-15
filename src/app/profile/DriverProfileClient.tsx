@@ -45,15 +45,15 @@ interface Props {
   initialPhone: string;
   gender: "male" | "female";
   carType: CarType | "";
-  carBrand: string;
-  carModel: string;
-  modelYear: number | null;
-  vehicleColor: string;
-  plateChar1: string;
-  plateChar2: string;
-  plateChar3: string;
-  plateDigits: string;
-  licenseExpiry: string;
+  carBrand?: string;
+  carModel?: string;
+  modelYear?: number | null;
+  vehicleColor?: string;
+  plateChar1?: string;
+  plateChar2?: string;
+  plateChar3?: string;
+  plateDigits?: string;
+  licenseExpiry?: string;
   carCapacity?: number;
   documents: Record<string, string | null>;
   verificationStatus: "incomplete" | "pending" | "verified";
@@ -147,15 +147,15 @@ export default function DriverProfileClient({
   initialPhone,
   gender: initialGender,
   carType: initialCarType,
-  carBrand: initialCarBrand,
-  carModel: initialCarModel,
-  modelYear: initialModelYear,
-  vehicleColor: initialVehicleColor,
-  plateChar1: initialPlateChar1,
-  plateChar2: initialPlateChar2,
-  plateChar3: initialPlateChar3,
-  plateDigits: initialPlateDigits,
-  licenseExpiry: initialLicenseExpiry,
+  carBrand: initialCarBrand = "",
+  carModel: initialCarModel = "",
+  modelYear: initialModelYear = null,
+  vehicleColor: initialVehicleColor = "",
+  plateChar1: initialPlateChar1 = "",
+  plateChar2: initialPlateChar2 = "",
+  plateChar3: initialPlateChar3 = "",
+  plateDigits: initialPlateDigits = "",
+  licenseExpiry: initialLicenseExpiry = "",
   carCapacity,
   documents: initialDocuments,
   verificationStatus: initialVerificationStatus,
@@ -231,7 +231,7 @@ export default function DriverProfileClient({
     /^[\u0600-\u06FF]$/.test(plateChar1) ? plateChar1 : "",
     /^[\u0600-\u06FF]$/.test(plateChar2) ? plateChar2 : "",
     /^[\u0600-\u06FF]$/.test(plateChar3) ? plateChar3 : "",
-    /^\d{4}$/.test(plateDigits) ? plateDigits : "",
+    /^\d{3,4}$/.test(plateDigits) ? plateDigits : "",
     licenseExpiry.trim(),
   ];
   const detailsFilledCount = DETAIL_FIELDS.filter(Boolean).length;
@@ -288,7 +288,7 @@ export default function DriverProfileClient({
       !/^[\u0600-\u06FF]$/.test(plateChar1) ||
       !/^[\u0600-\u06FF]$/.test(plateChar2) ||
       !/^[\u0600-\u06FF]$/.test(plateChar3) ||
-      !/^\d{4}$/.test(plateDigits) ||
+      !/^\d{3,4}$/.test(plateDigits) ||
       !licenseExpiry.trim()
     ) {
       setDetailsMsg({ ok: false, text: "All vehicle details are required." });
@@ -420,17 +420,30 @@ export default function DriverProfileClient({
         >
           <div
             style={{
-              width: 56,
-              height: 56,
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               background: "#00C2A8",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
+              overflow: "hidden",
             }}
           >
-            <User size={26} color="#fff" aria-hidden="true" />
+            {documents.profilePic ? (
+              <img
+                src={documents.profilePic}
+                alt="Profile"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <User size={48} color="#fff" aria-hidden="true" />
+            )}
           </div>
           <div>
             <div
@@ -734,8 +747,9 @@ export default function DriverProfileClient({
                   ref={plateDigitsRef}
                   type="text"
                   inputMode="numeric"
+                  minLength={3}
                   maxLength={4}
-                  placeholder="9872"
+                  placeholder="987"
                   value={plateDigits}
                   onChange={(e) =>
                     setPlateDigits(e.target.value.replace(/\D/g, "").slice(0, 4))
@@ -743,16 +757,6 @@ export default function DriverProfileClient({
                   style={{ ...inputStyle, textAlign: "center", flex: 1 }}
                 />
               </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#5A6A7A",
-                  marginTop: 5,
-                  marginBottom: 0,
-                }}
-              >
-                Arabic letters only, then 4 numbers — e.g. ط ع ى 9872
-              </p>
             </div>
             <div>
               <label htmlFor="d-expiry" style={labelStyle}>

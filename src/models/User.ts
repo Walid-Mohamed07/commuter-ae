@@ -30,6 +30,7 @@ const UserSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+    profilePic: { type: String, default: null },
     savedAddresses: { type: [SavedAddressSchema], default: [] },
   },
   { timestamps: true }, // createdAt, updatedAt

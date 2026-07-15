@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   FileText,
   History,
-  Activity,
   Wallet,
   User,
   LogOut,
@@ -35,8 +34,7 @@ interface Props {
 
 const PASSENGER_NAV_LINKS = [
   { href: "/create", label: "Book", icon: CalendarPlus },
-  { href: "/my-requests", label: "My requests", icon: FileText },
-  { href: "/activity", label: "My activity", icon: Activity },
+  { href: "/my-trips", label: "My trips", icon: FileText },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/profile", label: "Profile", icon: User },
 ] as const;

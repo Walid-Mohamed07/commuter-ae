@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { connectDB } from "@/lib/db/mongoose";
-import { Booking } from "@/models/Booking";
+import { Request } from "@/models/Request";
+import { Trip } from "@/models/Trip";
 import { WalletTransaction } from "@/models/WalletTransaction";
 import { verifyAndSettleTopup } from "@/lib/payments/kashier";
 import { Types } from "mongoose";
@@ -67,19 +68,21 @@ export async function POST(req: NextRequest) {
     "completed",
   ].includes(st);
 
-  // orderId is either a single Booking _id or a groupId (multi-date booking) —
-  // match on whichever field applies. Conditional update — only settle if
-  // still unsettled (race-safe vs wallet path).
-  const filter = Types.ObjectId.isValid(orderId)
-    ? { _id: orderId, paymentStatus: { $in: ["pending", "failed"] } }
-    : { groupId: orderId, paymentStatus: { $in: ["pending", "failed"] } };
-
-  await Booking.updateMany(
-    filter,
+  // Conditional update — only settle if still unsettled (race-safe vs wallet path)
+  const settled = await Request.findOneAndUpdate(
+    { _id: orderId, paymentStatus: { $in: ["pending", "failed"] } },
     paid
       ? { paymentStatus: "paid", status: "submitted", paidAt: new Date() }
       : { paymentStatus: "failed" },
   );
+
+  // Sync Trips only when Request was actually updated (idempotent guard).
+  if (settled && paid) {
+    await Trip.updateMany(
+      { requestId: settled._id },
+      { paymentStatus: "paid", status: "submitted" },
+    );
+  }
 
   return NextResponse.json({ received: true });
 }
