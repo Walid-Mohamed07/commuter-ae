@@ -383,7 +383,7 @@ export default function ProfileClient({
         <div
           style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}
         >
-          <Link
+          {/* <Link
             href="/my-requests"
             style={{
               fontSize: 14,
@@ -397,7 +397,7 @@ export default function ProfileClient({
             }}
           >
             My requests →
-          </Link>
+          </Link> */}
           <Link
             href="/create"
             style={{

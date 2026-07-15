@@ -115,6 +115,13 @@ interface Pt {
   lng: number;
 }
 
+interface StationSelection {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default async function RequestDetailPage({
@@ -175,6 +182,10 @@ export default async function RequestDetailPage({
           durationMinutes: number;
           priceEgp: number;
           extraPassengers: number;
+          pickupStation?: StationSelection;
+          dropoffStation?: StationSelection;
+          walkingMinToStation?: number;
+          walkingMinFromStation?: number;
         }[]
       >(),
     getOrCreateWallet(session.userId),
@@ -208,6 +219,10 @@ export default async function RequestDetailPage({
       durationMinutes: number;
       priceEgp: number;
       extraPassengers: number;
+      pickupStation?: StationSelection;
+      dropoffStation?: StationSelection;
+      walkingMinToStation?: number;
+      walkingMinFromStation?: number;
     }[]
   >();
   for (const t of rawTrips ?? []) {
@@ -449,6 +464,20 @@ export default async function RequestDetailPage({
                           label="Drive time"
                           value={`+${t.durationMinutes} min`}
                         />
+                        {t.rideType === "shared" && t.pickupStation && (
+                          <Detail
+                            icon={<MapPin size={15} color="#00C2A8" />}
+                            label="Pickup station"
+                            value={`${t.pickupStation.name} · ${t.walkingMinToStation ?? 0} min walk`}
+                          />
+                        )}
+                        {t.rideType === "shared" && t.dropoffStation && (
+                          <Detail
+                            icon={<MapPin size={15} color="#E74C3C" />}
+                            label="Dropoff station"
+                            value={`${t.dropoffStation.name} · ${t.walkingMinFromStation ?? 0} min walk`}
+                          />
+                        )}
                       </div>
                       {status === "pending_payment" ||
                       status === "submitted" ||

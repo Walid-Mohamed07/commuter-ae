@@ -6,6 +6,15 @@ export interface Station {
   popupInfo: string;
 }
 
+export interface StationOption {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+  distanceKm: number;
+  walkingMin: number;
+}
+
 const SHARED_TYPES = new Set(["taxi_shared", "van_shared", "microbus_shared"]);
 
 export function isSharedVehicle(vehicleType: string): boolean {
@@ -33,6 +42,29 @@ export function haversineKm(
 /** Walking time in minutes at 4.5 km/h, rounded up */
 export function walkingMinutes(distKm: number): number {
   return Math.ceil((distKm / 4.5) * 60);
+}
+
+/** Returns nearest station options by haversine distance */
+export function findNearestStations(
+  lat: number,
+  lng: number,
+  stations: Station[],
+  limit = 5,
+): StationOption[] {
+  return stations
+    .map((station) => {
+      const distanceKm = haversineKm(lat, lng, station.lat, station.lng);
+      return {
+        id: station.id,
+        name: station.name,
+        lat: station.lat,
+        lng: station.lng,
+        distanceKm: Math.round(distanceKm * 100) / 100,
+        walkingMin: walkingMinutes(distanceKm),
+      };
+    })
+    .sort((left, right) => left.distanceKm - right.distanceKm)
+    .slice(0, Math.max(0, limit));
 }
 
 /** Returns nearest station by haversine, or null when list is empty */

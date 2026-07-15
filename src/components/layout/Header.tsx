@@ -107,7 +107,7 @@ export default function Header() {
           style={{ display: "flex", alignItems: "center", gap: 12 }}
           className="header-desktop-nav"
         >
-          <Link
+          {/* <Link
             href="/my-requests"
             style={{
               fontWeight: 500,
@@ -128,7 +128,7 @@ export default function Header() {
             }}
           >
             My requests
-          </Link>
+          </Link> */}
           <Link
             href="/login"
             style={{
@@ -195,7 +195,7 @@ export default function Header() {
             gap: 8,
           }}
         >
-          <Link
+          {/* <Link
             href="/my-requests"
             onClick={() => setMenuOpen(false)}
             style={{
@@ -209,7 +209,7 @@ export default function Header() {
             }}
           >
             My requests
-          </Link>
+          </Link> */}
           <Link
             href="/login"
             onClick={() => setMenuOpen(false)}

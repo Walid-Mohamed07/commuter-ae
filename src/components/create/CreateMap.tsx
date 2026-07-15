@@ -24,6 +24,13 @@ const STATION_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
   </svg>`,
 )}`;
 
+const DIMMED_STATION_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" opacity="0.42">
+    <circle cx="11" cy="11" r="10" fill="#F5A623" stroke="#0B1E3D" stroke-width="1.5"/>
+    <text x="11" y="15" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#0B1E3D">S</text>
+  </svg>`,
+)}`;
+
 // ── SVG route label badge ─────────────────────────────────────────────────────
 function routeLabelSvg(text: string, color: string): string {
   const w = 58;
@@ -158,6 +165,14 @@ export default function CreateMap({
     } else {
       if (t.pickup) allPoints.push({ lat: t.pickup.lat, lng: t.pickup.lng });
       if (t.dropoff) allPoints.push({ lat: t.dropoff.lat, lng: t.dropoff.lng });
+    }
+    if (isSharedVehicle(t.vehicleType)) {
+      t.pickupStationOptions.forEach((station) => {
+        allPoints.push({ lat: station.lat, lng: station.lng });
+      });
+      t.dropoffStationOptions.forEach((station) => {
+        allPoints.push({ lat: station.lat, lng: station.lng });
+      });
     }
   }
 
@@ -334,6 +349,7 @@ export default function CreateMap({
                 t.pickup &&
                 t.pickupStation && (
                   <Polyline
+                    key={`pickup-walk-${t.id}-${t.pickupStation.id}`}
                     path={[
                       { lat: t.pickup.lat, lng: t.pickup.lng },
                       { lat: t.pickupStation.lat, lng: t.pickupStation.lng },
@@ -362,6 +378,7 @@ export default function CreateMap({
                 t.dropoff &&
                 t.dropoffStation && (
                   <Polyline
+                    key={`dropoff-walk-${t.id}-${t.dropoffStation.id}`}
                     path={[
                       { lat: t.dropoffStation.lat, lng: t.dropoffStation.lng },
                       { lat: t.dropoff.lat, lng: t.dropoff.lng },
@@ -387,41 +404,43 @@ export default function CreateMap({
                   />
                 )}
 
-              {/* Station markers */}
-              {isSharedVehicle(t.vehicleType) && t.pickupStation && (
-                <Marker
-                  position={{
-                    lat: t.pickupStation.lat,
-                    lng: t.pickupStation.lng,
-                  }}
-                  icon={{
-                    url: STATION_ICON,
-                    scaledSize: new google.maps.Size(22, 22),
-                    anchor: new google.maps.Point(11, 11),
-                  }}
-                  title={t.pickupStation.name}
-                  clickable={false}
-                  zIndex={8 + i}
-                />
-              )}
+              {/* Shared station candidates: selected bright, alternatives dimmed. */}
               {isSharedVehicle(t.vehicleType) &&
-                t.dropoffStation &&
-                t.dropoffStation.lat !== t.pickupStation?.lat && (
-                  <Marker
-                    position={{
-                      lat: t.dropoffStation.lat,
-                      lng: t.dropoffStation.lng,
-                    }}
-                    icon={{
-                      url: STATION_ICON,
-                      scaledSize: new google.maps.Size(22, 22),
-                      anchor: new google.maps.Point(11, 11),
-                    }}
-                    title={t.dropoffStation.name}
-                    clickable={false}
-                    zIndex={8 + i}
-                  />
-                )}
+                t.pickupStationOptions.map((station) => {
+                  const selected = station.id === t.pickupStation?.id;
+                  return (
+                    <Marker
+                      key={`pickup-station-${t.id}-${station.id}`}
+                      position={{ lat: station.lat, lng: station.lng }}
+                      icon={{
+                        url: selected ? STATION_ICON : DIMMED_STATION_ICON,
+                        scaledSize: new google.maps.Size(22, 22),
+                        anchor: new google.maps.Point(11, 11),
+                      }}
+                      title={`Pickup station: ${station.name}`}
+                      clickable={false}
+                      zIndex={selected ? 9 + i : 6 + i}
+                    />
+                  );
+                })}
+              {isSharedVehicle(t.vehicleType) &&
+                t.dropoffStationOptions.map((station) => {
+                  const selected = station.id === t.dropoffStation?.id;
+                  return (
+                    <Marker
+                      key={`dropoff-station-${t.id}-${station.id}`}
+                      position={{ lat: station.lat, lng: station.lng }}
+                      icon={{
+                        url: selected ? STATION_ICON : DIMMED_STATION_ICON,
+                        scaledSize: new google.maps.Size(22, 22),
+                        anchor: new google.maps.Point(11, 11),
+                      }}
+                      title={`Dropoff station: ${station.name}`}
+                      clickable={false}
+                      zIndex={selected ? 9 + i : 6 + i}
+                    />
+                  );
+                })}
 
               {!isSharedVehicle(t.vehicleType) &&
                 t.stops.map(
