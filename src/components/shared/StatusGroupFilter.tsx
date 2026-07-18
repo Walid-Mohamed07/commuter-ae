@@ -38,8 +38,8 @@ export default function StatusGroupFilter() {
             type="button"
             onClick={() => select(g.value)}
             style={{
-              border: isActive ? "1.5px solid #0B1E3D" : "1.5px solid #e2e8ec",
-              background: isActive ? "#0B1E3D" : "#fff",
+              border: isActive ? "1.5px solid #00C2A8" : "1.5px solid #e2e8ec",
+              background: isActive ? "#00C2A8" : "#fff",
               color: isActive ? "#fff" : "#0B1E3D",
               fontWeight: 700,
               fontSize: 13,
