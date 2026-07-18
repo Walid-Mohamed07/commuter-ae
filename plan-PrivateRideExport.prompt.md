@@ -159,8 +159,8 @@ Response:
   const zip = new JSZip();
   zip.file("private-ride-requests.json", JSON.stringify(rows, null, 2));
   zip.file("private-ride-requests.xlsx", Buffer.from(buf));
-  const zipBuf = await zip.generateAsync({ type: "nodebuffer" });
-  return new NextResponse(zipBuf, {
+  const body = await zip.generateAsync({ type: "blob" });
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition":

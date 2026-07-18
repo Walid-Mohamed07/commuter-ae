@@ -169,8 +169,8 @@ export async function GET() {
     Buffer.from(await wb.xlsx.writeBuffer()),
   );
 
-  const buf = await zip.generateAsync({ type: "nodebuffer" });
-  return new NextResponse(buf, {
+  const body = await zip.generateAsync({ type: "blob" });
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": 'attachment; filename="private-ride-requests.zip"',
