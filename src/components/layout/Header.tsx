@@ -107,8 +107,8 @@ export default function Header() {
           style={{ display: "flex", alignItems: "center", gap: 12 }}
           className="header-desktop-nav"
         >
-          <Link
-            href="/my-trips"
+          {/* <Link
+            href="/my-requests"
             style={{
               fontWeight: 500,
               fontSize: 14,
@@ -127,8 +127,8 @@ export default function Header() {
               e.currentTarget.style.background = "transparent";
             }}
           >
-            My trips
-          </Link>
+            My requests
+          </Link> */}
           <Link
             href="/login"
             style={{
@@ -195,8 +195,8 @@ export default function Header() {
             gap: 8,
           }}
         >
-          <Link
-            href="/my-trips"
+          {/* <Link
+            href="/my-requests"
             onClick={() => setMenuOpen(false)}
             style={{
               display: "block",
@@ -208,8 +208,8 @@ export default function Header() {
               textDecoration: "none",
             }}
           >
-            My trips
-          </Link>
+            My requests
+          </Link> */}
           <Link
             href="/login"
             onClick={() => setMenuOpen(false)}

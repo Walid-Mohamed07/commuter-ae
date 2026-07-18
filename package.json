@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:stations": "node scripts/seed-stations.cjs",
-    "migrate:public-numbers": "node scripts/backfill-public-numbers.cjs"
+    "seed:stations": "node scripts/seed-stations.cjs"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",

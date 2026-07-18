@@ -52,13 +52,6 @@ const StopSchema = new Schema(
 
 const TripSchema = new Schema(
   {
-    tripNumber: {
-      type: Number,
-      required: true,
-      unique: true,
-      sparse: true,
-      immutable: true,
-    },
     requestId: {
       type: Types.ObjectId,
       ref: "Request",
@@ -124,11 +117,6 @@ const TripSchema = new Schema(
 
 TripSchema.index({ requestId: 1, date: 1 });
 TripSchema.index({ userId: 1, date: -1 });
-
-// const existingTripModel = models.Trip;
-// if (existingTripModel && !existingTripModel.schema.path("tripNumber")) {
-//   existingTripModel.schema.add({ tripNumber: TripSchema.obj.tripNumber });
-// }
 
 export type TripDoc = InferSchemaType<typeof TripSchema>;
 export const Trip = models.Trip || model("Trip", TripSchema);

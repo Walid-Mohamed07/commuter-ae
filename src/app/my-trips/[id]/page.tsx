@@ -1,5 +1,14 @@
 import { redirect, notFound } from "next/navigation";
-import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
+import Link from "next/link";
+import {
+  Car,
+  MapPin,
+  Clock,
+  Route,
+  Users,
+  CalendarDays,
+  ChevronLeft,
+} from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getUserTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
@@ -49,13 +58,13 @@ const STATUS_PILL: Record<
     bg: "#FFF3E0",
     color: "#E65100",
   },
-  submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
-  confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
-  completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
-  cancelled: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
-  time_out: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  submitted: { label: "Submitted", bg: "#E2E8F0", color: "#5A6A7A" },
+  matching: { label: "Matching…", bg: "#FFF3E0", color: "#E65100" },
+  confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
+  active: { label: "Active", bg: "#00C2A8", color: "#fff" },
+  completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },
+  cancelled: { label: "Cancelled", bg: "#FFEBEE", color: "#E74C3C" },
+  time_out: { label: "Timed out", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -142,6 +151,7 @@ export default async function TripDetailPage({
 
   const vLabel =
     VEHICLES[trip.vehicleType as VehicleKey]?.label ?? trip.vehicleType;
+  const requestId = trip.requestId;
   const paymentStatus = (trip.paymentStatus as PaymentStatus) ?? "pending";
   const status = (trip.status as TripStatus) ?? "pending_payment";
   const distinctPassengers = (trip.passengers ?? []).filter(
@@ -160,6 +170,24 @@ export default async function TripDetailPage({
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px 56px" }}
       >
+        {/* Parent request link */}
+        <Link
+          href={`/my-requests/${requestId}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#5A6A7A",
+            textDecoration: "none",
+            marginBottom: 18,
+          }}
+        >
+          <ChevronLeft size={15} aria-hidden="true" />
+          View full request
+        </Link>
+
         {/* Summary header */}
         <div style={{ marginBottom: 20 }}>
           <span
@@ -174,7 +202,9 @@ export default async function TripDetailPage({
             }}
           >
             <CalendarDays size={14} aria-hidden="true" />
-            Trip #{trip.tripNumber} · {prettyDate(trip.date)}
+            {prettyDate(trip.date)}
+            <span style={{ color: "#c9d3dc" }}>·</span>
+            Trip {trip.cycleIndex + 1}
           </span>
           <div
             style={{
@@ -212,12 +242,7 @@ export default async function TripDetailPage({
             marginBottom: 16,
           }}
         >
-          <RouteMap
-            pickup={trip.pickup}
-            dropoff={trip.dropoff}
-            height={220}
-            interactive
-          />
+          <RouteMap pickup={trip.pickup} dropoff={trip.dropoff} height={200} />
 
           <div style={{ padding: "16px 18px" }}>
             {/* Pickup / dropoff */}
@@ -304,14 +329,9 @@ export default async function TripDetailPage({
               }}
             >
               <Detail
-                icon={<Route size={15} color="#0B1E3D" />}
-                label="Ride type"
-                value={trip.rideType === "shared" ? "Shared" : "Private"}
-              />
-              <Detail
                 icon={<Car size={15} color="#0B1E3D" />}
                 label="Vehicle"
-                value={vLabel}
+                value={`${vLabel} (${trip.rideType})`}
               />
               <Detail
                 icon={<Users size={15} color="#0B1E3D" />}

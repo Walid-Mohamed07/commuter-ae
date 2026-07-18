@@ -16,20 +16,14 @@ export default async function ProfilePage() {
   if (profile.role === "driver") {
     return (
       <DriverProfileClient
-        userNumber={profile.userNumber}
         initialName={profile.name}
         email={profile.email}
         initialPhone={profile.phone}
         gender={profile.gender}
         carType={profile.carType}
-        carBrand={profile.carBrand}
-        carModel={profile.carModel}
-        modelYear={profile.modelYear}
+        vehicleName={profile.vehicleName}
         vehicleColor={profile.vehicleColor}
-        plateChar1={profile.plateChar1}
-        plateChar2={profile.plateChar2}
-        plateChar3={profile.plateChar3}
-        plateDigits={profile.plateDigits}
+        licensePlate={profile.licensePlate}
         licenseExpiry={profile.licenseExpiry}
         carCapacity={profile.carCapacity}
         documents={profile.documents}
@@ -42,7 +36,6 @@ export default async function ProfilePage() {
 
   return (
     <ProfileClient
-      userNumber={profile.userNumber}
       initialName={profile.name}
       email={profile.email}
       initialPhone={profile.phone}

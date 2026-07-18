@@ -1,16 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import {
-  Car,
-  MapPin,
-  Clock,
-  CalendarDays,
-  ChevronRight,
-  Route,
-} from "lucide-react";
+import { Car, MapPin, Clock, CalendarDays, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { listUserTrips } from "@/lib/services/trips";
-import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
@@ -18,8 +10,8 @@ import EmptyState from "@/components/shared/EmptyState";
 import StatusGroupFilter from "@/components/shared/StatusGroupFilter";
 import DateRangeCalendar from "@/components/shared/DateRangeCalendar";
 import Pagination from "@/components/shared/Pagination";
-import type { BookingStatus, TripListRow } from "@/types/booking";
-import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
+import RouteMap from "@/components/shared/RouteMap";
+import type { PaymentStatus } from "@/types/booking";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -47,22 +39,15 @@ function prettyDate(date: string): string {
   });
 }
 
-const STATUS_PILL: Record<
-  BookingStatus,
+const PAY_PILL: Record<
+  PaymentStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending_payment: {
-    label: "Pending payment",
-    bg: "#FFF3E0",
-    color: "#E65100",
-  },
-  submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
-  confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
-  completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
-  cancelled: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
-  time_out: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
+  pending: { label: "Awaiting payment", bg: "#FFF8E1", color: "#E65100" },
+  paid: { label: "Paid", bg: "#E8F5E9", color: "#27AE60" },
+  failed: { label: "Payment failed", bg: "#FFEBEE", color: "#E74C3C" },
+  refunded: { label: "Refunded", bg: "#EDE7F6", color: "#6A1B9A" },
+  expired: { label: "Expired", bg: "#F5F5F5", color: "#9aa7b4" },
 };
 
 function Pill({
@@ -92,6 +77,28 @@ function Pill({
     </span>
   );
 }
+
+const PAYMENT_OPTIONS: FilterDef = {
+  key: "payment",
+  label: "Payment",
+  options: [
+    { value: "paid", label: "Paid" },
+    { value: "pending", label: "Awaiting payment" },
+    { value: "failed", label: "Failed" },
+    { value: "refunded", label: "Refunded" },
+  ],
+};
+
+const VEHICLE_OPTIONS: FilterDef = {
+  key: "vehicle",
+  label: "Vehicle",
+  options: (Object.keys(VEHICLES) as VehicleKey[]).map((k) => ({
+    value: k,
+    label: VEHICLES[k].label,
+  })),
+};
+
+// ── shape ────────────────────────────────────────────────────────────────────
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -162,28 +169,14 @@ export default async function MyTripsPage({
   const result = await listUserTrips(session.userId, {
     page,
     pageSize: PAGE_SIZE,
-    statusGroup: groupFilter,
-    dateFrom,
-    dateTo,
+    paymentStatus:
+      payment && payment in PAY_PILL ? (payment as PaymentStatus) : undefined,
+    vehicleType: vehicle && vehicle in VEHICLES ? vehicle : undefined,
   });
   const { rows: trips, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const wallet = await getOrCreateWallet(session.userId);
-  const walletBalance = wallet.balanceEgp ?? 0;
-
-  // Today's date in YYYY-MM-DD format for comparison
-  const todayStr = new Date().toISOString().split("T")[0];
-
-  // Group consecutive trips by day (order already sorted above).
-  const dayGroups: { date: string; trips: TripListRow[] }[] = [];
-  for (const t of trips) {
-    const last = dayGroups[dayGroups.length - 1];
-    if (last && last.date === t.date) last.trips.push(t);
-    else dayGroups.push({ date: t.date, trips: [t] });
-  }
-
-  const hasFilters = Boolean(groupFilter || dateFrom || dateTo);
+  const hasFilters = Boolean(payment || vehicle);
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
@@ -255,18 +248,15 @@ export default async function MyTripsPage({
           />
         ) : (
           <>
-            {dayGroups.map((group) => (
-              <div key={group.date} style={{ marginBottom: 20 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 10,
-                  }}
-                >
-                  <CalendarDays size={14} color="#00806E" aria-hidden="true" />
-                  <span
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {trips.map((trip) => {
+                const vLabel =
+                  VEHICLES[trip.vehicleType as VehicleKey]?.label ??
+                  trip.vehicleType;
+                return (
+                  <Link
+                    key={trip.id}
+                    href={`/my-trips/${trip.id}`}
                     style={{
                       fontSize: 13,
                       fontWeight: 800,

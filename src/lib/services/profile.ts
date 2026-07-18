@@ -6,7 +6,6 @@ import { User } from "@/models/User";
 import type { SavedAddress } from "@/types/shared";
 
 interface ProfileUser {
-  userNumber: number;
   name: string;
   email: string;
   phone: string;
@@ -21,14 +20,9 @@ export interface DriverProfile extends ProfileUser {
   role: "driver";
   gender: "male" | "female";
   carType: "private" | "taxi" | "van" | "microbus" | "";
-  carBrand: string;
-  carModel: string;
-  modelYear: number | null;
+  vehicleName: string;
   vehicleColor: string;
-  plateChar1: string;
-  plateChar2: string;
-  plateChar3: string;
-  plateDigits: string;
+  licensePlate: string;
   licenseExpiry: string;
   carCapacity?: number;
   verificationStatus: "incomplete" | "pending" | "verified";
@@ -47,9 +41,8 @@ export async function getProfile(
   await connectDB();
 
   const user = await User.findById(userId)
-    .select("userNumber name email phone savedAddresses")
+    .select("name email phone savedAddresses")
     .lean<{
-      userNumber: number;
       name: string;
       email: string;
       phone?: string;
@@ -58,7 +51,6 @@ export async function getProfile(
   if (!user) return null;
 
   const profileUser: ProfileUser = {
-    userNumber: user.userNumber,
     name: user.name,
     email: user.email,
     phone: user.phone ?? "",
@@ -69,14 +61,9 @@ export async function getProfile(
   const driver = await Driver.findOne({ userId }).lean<{
     gender: "male" | "female";
     carType?: "private" | "taxi" | "van" | "microbus";
-    carBrand?: string;
-    carModel?: string;
-    modelYear?: number;
+    vehicleName?: string;
     vehicleColor?: string;
-    plateChar1?: string;
-    plateChar2?: string;
-    plateChar3?: string;
-    plateDigits?: string;
+    licensePlate?: string;
     licenseExpiry?: string;
     carCapacity?: number;
     verificationStatus: "incomplete" | "pending" | "verified";
@@ -90,14 +77,9 @@ export async function getProfile(
     role: "driver",
     gender: driver.gender,
     carType: driver.carType ?? "",
-    carBrand: driver.carBrand ?? "",
-    carModel: driver.carModel ?? "",
-    modelYear: driver.modelYear ?? null,
+    vehicleName: driver.vehicleName ?? "",
     vehicleColor: driver.vehicleColor ?? "",
-    plateChar1: driver.plateChar1 ?? "",
-    plateChar2: driver.plateChar2 ?? "",
-    plateChar3: driver.plateChar3 ?? "",
-    plateDigits: driver.plateDigits ?? "",
+    licensePlate: driver.licensePlate ?? "",
     licenseExpiry: driver.licenseExpiry ?? "",
     carCapacity: driver.carCapacity,
     verificationStatus: driver.verificationStatus,

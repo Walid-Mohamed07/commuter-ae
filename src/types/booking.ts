@@ -27,11 +27,8 @@ export type TripStatus = BookingStatus;
 /** Flat trip row for the /my-trips history list and GET /api/trips. */
 export interface TripListRow {
   id: string;
-  tripNumber: number;
-  requestId: string;
   date: string;
   paymentStatus: PaymentStatus;
-  status: BookingStatus;
   vehicleType: string;
   pickupAddress: string;
   dropoffAddress: string;
@@ -40,9 +37,6 @@ export interface TripListRow {
   pickupTime: string;
   arrivalTime: string;
   priceEgp: number;
-  distanceKm: number;
-  durationMinutes: number;
-  bookingAmountEgp: number;
   createdAt: string;
 }
 
