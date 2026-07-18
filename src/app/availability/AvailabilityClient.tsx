@@ -24,6 +24,7 @@ import type { GeoPoint as Point } from "@/types/geo";
 
 interface AvailabilityRecord {
   _id: string;
+  availabilityNumber: number;
   date: string;
   startLocation: Point;
   endLocation: Point;
@@ -372,6 +373,7 @@ export default function AvailabilityClient({
                       color: "#0B1E3D",
                     }}
                   >
+                    #{r.availabilityNumber} ·{" "}
                     {format(new Date(`${r.date}T12:00:00`), "EEE, MMM d, yyyy")}
                   </p>
                   <p

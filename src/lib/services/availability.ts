@@ -5,6 +5,7 @@ import type { GeoPoint } from "@/types/geo";
 
 export interface AvailabilityRecord {
   _id: string;
+  availabilityNumber: number;
   date: string;
   startLocation: GeoPoint;
   endLocation: GeoPoint;
@@ -19,6 +20,7 @@ export async function listDriverAvailability(
   const records = await Availability.find({ driverId }).sort({ date: 1 }).lean<
     {
       _id: unknown;
+      availabilityNumber: number;
       date: string;
       startLocation: GeoPoint;
       endLocation: GeoPoint;
@@ -29,6 +31,7 @@ export async function listDriverAvailability(
 
   return records.map((record) => ({
     _id: String(record._id),
+    availabilityNumber: record.availabilityNumber,
     date: record.date,
     startLocation: record.startLocation,
     endLocation: record.endLocation,

@@ -1,12 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import {
-  Car,
-  MapPin,
-  Clock,
-  Route,
-  Users,
-  CalendarDays,
-} from "lucide-react";
+import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getUserTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
@@ -181,7 +174,7 @@ export default async function TripDetailPage({
             }}
           >
             <CalendarDays size={14} aria-hidden="true" />
-            {prettyDate(trip.date)}
+            Trip #{trip.tripNumber} · {prettyDate(trip.date)}
           </span>
           <div
             style={{

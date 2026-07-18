@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db/mongoose";
 import { User } from "@/models/User";
+import { nextSequence } from "@/models/Counter";
 import { Driver } from "@/models/Driver";
 import { createSession } from "@/lib/auth/session";
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
     console.log("Phase 4: Email check passed. Proceeding to create user.");
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const userNumber = await nextSequence("userNumber");
 
     console.log("Phase 5: Password hashed. Proceeding to create user.");
 
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
     });
 
     const user = await User.create({
+      userNumber,
       name: name.trim(),
       phone: phone.trim(),
       passwordHash,

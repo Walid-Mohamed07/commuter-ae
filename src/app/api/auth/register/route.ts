@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
 import { User } from "@/models/User";
+import { nextSequence } from "@/models/Counter";
 import { createSession } from "@/lib/auth/session";
 import bcrypt from "bcryptjs";
 
@@ -49,7 +50,9 @@ export async function POST(req: NextRequest) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const userNumber = await nextSequence("userNumber");
     const user = await User.create({
+      userNumber,
       name: name.trim(),
       phone: phone.trim(),
       passwordHash,

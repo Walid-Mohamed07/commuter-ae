@@ -52,6 +52,13 @@ const StopSchema = new Schema(
 
 const TripSchema = new Schema(
   {
+    tripNumber: {
+      type: Number,
+      required: true,
+      unique: true,
+      sparse: true,
+      immutable: true,
+    },
     requestId: {
       type: Types.ObjectId,
       ref: "Request",

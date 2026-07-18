@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
 import { Availability } from "@/models/Availability";
+import { nextSequence } from "@/models/Counter";
 import { Driver } from "@/models/Driver";
 import { getSession } from "@/lib/auth/session";
 import type { GeoPoint as Point } from "@/types/geo";
@@ -79,22 +80,25 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
 
-    const docs = dates.map((date: string) => ({
-      driverId: session.userId,
-      date,
-      startLocation: {
-        address: startLocation.address,
-        lat: startLocation.lat,
-        lng: startLocation.lng,
-      },
-      endLocation: {
-        address: endLocation.address,
-        lat: endLocation.lat,
-        lng: endLocation.lng,
-      },
-      startTime,
-      endTime,
-    }));
+    const docs = await Promise.all(
+      dates.map(async (date: string) => ({
+        availabilityNumber: await nextSequence("availabilityNumber"),
+        driverId: session.userId,
+        date,
+        startLocation: {
+          address: startLocation.address,
+          lat: startLocation.lat,
+          lng: startLocation.lng,
+        },
+        endLocation: {
+          address: endLocation.address,
+          lat: endLocation.lat,
+          lng: endLocation.lng,
+        },
+        startTime,
+        endTime,
+      })),
+    );
 
     const created = await Availability.insertMany(docs);
     return NextResponse.json({ ok: true, records: created }, { status: 201 });

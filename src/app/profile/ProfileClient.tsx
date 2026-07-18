@@ -8,6 +8,7 @@ import SavedAddressesSection from "@/components/shared/SavedAddressesSection";
 import type { SavedAddress } from "@/types/shared";
 
 interface Props {
+  userNumber: number;
   initialName: string;
   email: string;
   initialPhone: string;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function ProfileClient({
+  userNumber,
   initialName,
   email,
   initialPhone,
@@ -198,7 +200,9 @@ export default function ProfileClient({
             >
               {initialName}
             </p>
-            <p style={{ margin: 0, fontSize: 13, color: "#5A6A7A" }}>{email}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#5A6A7A" }}>
+              #{userNumber} · {email}
+            </p>
           </div>
         </div>
 

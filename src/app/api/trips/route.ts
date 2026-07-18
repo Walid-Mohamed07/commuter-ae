@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { connectDB } from "@/lib/db/mongoose";
 import { Request } from "@/models/Request";
 import { Trip } from "@/models/Trip";
+import { nextSequence } from "@/models/Counter";
 import { Station } from "@/models/Station";
 import {
   VEHICLES,
@@ -482,16 +483,19 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const tripDocuments = dates.flatMap((date) =>
-      serverTrips.map((trip, cycleIndex) => ({
-        requestId: request._id,
-        userId: new Types.ObjectId(session.userId),
-        date,
-        cycleIndex,
-        ...trip,
-        paymentStatus: "pending",
-        status: "pending_payment",
-      })),
+    const tripDocuments = await Promise.all(
+      dates.flatMap((date) =>
+        serverTrips.map(async (trip, cycleIndex) => ({
+          tripNumber: await nextSequence("tripNumber"),
+          requestId: request._id,
+          userId: new Types.ObjectId(session.userId),
+          date,
+          cycleIndex,
+          ...trip,
+          paymentStatus: "pending",
+          status: "pending_payment",
+        })),
+      ),
     );
     await Trip.insertMany(tripDocuments);
   } catch (err) {

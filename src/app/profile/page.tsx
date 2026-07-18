@@ -16,6 +16,7 @@ export default async function ProfilePage() {
   if (profile.role === "driver") {
     return (
       <DriverProfileClient
+        userNumber={profile.userNumber}
         initialName={profile.name}
         email={profile.email}
         initialPhone={profile.phone}
@@ -41,6 +42,7 @@ export default async function ProfilePage() {
 
   return (
     <ProfileClient
+      userNumber={profile.userNumber}
       initialName={profile.name}
       email={profile.email}
       initialPhone={profile.phone}

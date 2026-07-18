@@ -3,7 +3,11 @@ import { Types } from "mongoose";
 import { connectDB } from "@/lib/db/mongoose";
 import { Trip } from "@/models/Trip";
 import { Request as RequestModel } from "@/models/Request";
-import type { BookingStatus, PaymentStatus, TripListRow } from "@/types/booking";
+import type {
+  BookingStatus,
+  PaymentStatus,
+  TripListRow,
+} from "@/types/booking";
 import type { GeoPoint, StationSelection } from "@/types/geo";
 
 const STATUS_GROUPS: Record<string, BookingStatus[]> = {
@@ -61,6 +65,7 @@ export async function listUserTrips(
       .lean<
         {
           _id: unknown;
+          tripNumber: number;
           requestId: unknown;
           date: string;
           paymentStatus: string;
@@ -93,6 +98,7 @@ export async function listUserTrips(
     page,
     rows: rawTrips.map((trip) => ({
       id: String(trip._id),
+      tripNumber: trip.tripNumber,
       requestId: String(trip.requestId),
       date: trip.date,
       paymentStatus: (trip.paymentStatus as PaymentStatus) ?? "pending",
@@ -113,7 +119,8 @@ export async function listUserTrips(
       priceEgp: trip.priceEgp,
       distanceKm: trip.distanceKm,
       durationMinutes: trip.durationMinutes,
-      bookingAmountEgp: amountByRequestId.get(String(trip.requestId)) ?? trip.priceEgp,
+      bookingAmountEgp:
+        amountByRequestId.get(String(trip.requestId)) ?? trip.priceEgp,
       createdAt:
         trip.createdAt instanceof Date
           ? trip.createdAt.toISOString()
@@ -124,6 +131,7 @@ export async function listUserTrips(
 
 export interface UserTripDetail {
   id: string;
+  tripNumber: number;
   requestId: string;
   date: string;
   cycleIndex: number;
@@ -163,6 +171,7 @@ export async function getUserTrip(
     userId: new Types.ObjectId(userId),
   }).lean<{
     _id: unknown;
+    tripNumber: number;
     requestId: unknown;
     date: string;
     cycleIndex: number;

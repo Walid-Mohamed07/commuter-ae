@@ -12,6 +12,13 @@ const SavedAddressSchema = new Schema(
 
 const UserSchema = new Schema(
   {
+    userNumber: {
+      type: Number,
+      required: true,
+      unique: true,
+      sparse: true,
+      immutable: true,
+    },
     name: { type: String, required: true, trim: true },
     role: {
       type: String,

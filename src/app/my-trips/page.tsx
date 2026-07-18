@@ -1,6 +1,13 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Car, MapPin, Clock, CalendarDays, ChevronRight, Route } from "lucide-react";
+import {
+  Car,
+  MapPin,
+  Clock,
+  CalendarDays,
+  ChevronRight,
+  Route,
+} from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { listUserTrips } from "@/lib/services/trips";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
@@ -141,12 +148,15 @@ export default async function MyTripsPage({
     ["upcoming", "ongoing", "previous", "pending_payment"].includes(
       params.group,
     )
-      ? (params.group as "upcoming" | "ongoing" | "previous" | "pending_payment")
+      ? (params.group as
+          | "upcoming"
+          | "ongoing"
+          | "previous"
+          | "pending_payment")
       : undefined;
   const dateFrom =
     typeof params.dateFrom === "string" ? params.dateFrom : undefined;
-  const dateTo =
-    typeof params.dateTo === "string" ? params.dateTo : undefined;
+  const dateTo = typeof params.dateTo === "string" ? params.dateTo : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
   const result = await listUserTrips(session.userId, {
@@ -267,8 +277,11 @@ export default async function MyTripsPage({
                   >
                     {group.date === todayStr ? "Today" : prettyDate(group.date)}
                   </span>
-                  <span style={{ fontSize: 12, color: "#9aa7b4", fontWeight: 600 }}>
-                    · {group.trips.length} trip{group.trips.length === 1 ? "" : "s"}
+                  <span
+                    style={{ fontSize: 12, color: "#9aa7b4", fontWeight: 600 }}
+                  >
+                    · {group.trips.length} trip
+                    {group.trips.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div
@@ -304,14 +317,23 @@ export default async function MyTripsPage({
                           <div style={{ padding: "16px 18px" }}>
                             {/* Created at */}
                             <div style={{ marginBottom: 10 }}>
-                              <span style={{ fontSize: 11, color: "#9aa7b4", fontWeight: 600 }}>
-                                Requested{" "}
-                                {new Date(trip.createdAt).toLocaleString("en-EG", {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: "#9aa7b4",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Trip #{trip.tripNumber} · Requested{" "}
+                                {new Date(trip.createdAt).toLocaleString(
+                                  "en-EG",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  },
+                                )}
                               </span>
                             </div>
 
@@ -332,7 +354,11 @@ export default async function MyTripsPage({
                                   gap: 8,
                                 }}
                               >
-                                <Car size={20} color="#00806E" aria-hidden="true" />
+                                <Car
+                                  size={20}
+                                  color="#00806E"
+                                  aria-hidden="true"
+                                />
                                 <span
                                   style={{
                                     fontSize: 18,
@@ -394,7 +420,9 @@ export default async function MyTripsPage({
                                   style={{ marginTop: 2, flexShrink: 0 }}
                                   aria-hidden="true"
                                 />
-                                <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                                <span
+                                  style={{ fontSize: 13, color: "#0B1E3D" }}
+                                >
                                   {truncate(trip.pickupAddress)}
                                 </span>
                               </div>
@@ -411,7 +439,9 @@ export default async function MyTripsPage({
                                   style={{ marginTop: 2, flexShrink: 0 }}
                                   aria-hidden="true"
                                 />
-                                <span style={{ fontSize: 13, color: "#0B1E3D" }}>
+                                <span
+                                  style={{ fontSize: 13, color: "#0B1E3D" }}
+                                >
                                   {truncate(trip.dropoffAddress)}
                                 </span>
                               </div>
@@ -434,8 +464,14 @@ export default async function MyTripsPage({
                                   gap: 5,
                                 }}
                               >
-                                <Clock size={12} color="#5A6A7A" aria-hidden="true" />
-                                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                                <Clock
+                                  size={12}
+                                  color="#5A6A7A"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  style={{ fontSize: 12, color: "#5A6A7A" }}
+                                >
                                   Pickup{" "}
                                   <strong style={{ color: "#0B1E3D" }}>
                                     {to12h(trip.pickupTime)}
@@ -449,8 +485,14 @@ export default async function MyTripsPage({
                                   gap: 5,
                                 }}
                               >
-                                <Clock size={12} color="#5A6A7A" aria-hidden="true" />
-                                <span style={{ fontSize: 12, color: "#5A6A7A" }}>
+                                <Clock
+                                  size={12}
+                                  color="#5A6A7A"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  style={{ fontSize: 12, color: "#5A6A7A" }}
+                                >
                                   Arrive{" "}
                                   <strong style={{ color: "#0B1E3D" }}>
                                     {to12h(trip.arrivalTime)}
@@ -483,7 +525,11 @@ export default async function MyTripsPage({
                                 {trip.distanceKm?.toFixed(1)} km ·{" "}
                                 {trip.durationMinutes} min
                               </span>
-                              <ChevronRight size={16} color="#9aa7b4" aria-hidden="true" />
+                              <ChevronRight
+                                size={16}
+                                color="#9aa7b4"
+                                aria-hidden="true"
+                              />
                             </div>
                           </div>
                         </Link>
@@ -510,4 +556,3 @@ export default async function MyTripsPage({
     </div>
   );
 }
-

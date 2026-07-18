@@ -40,6 +40,7 @@ const DOCUMENTS: DocKey[] = [
 ];
 
 interface Props {
+  userNumber: number;
   initialName: string;
   email: string;
   initialPhone: string;
@@ -115,18 +116,46 @@ function saveButtonStyle(loading: boolean): React.CSSProperties {
   };
 }
 
-function ProgressBar({ pct, filled, total }: { pct: number; filled: number; total: number }) {
+function ProgressBar({
+  pct,
+  filled,
+  total,
+}: {
+  pct: number;
+  filled: number;
+  total: number;
+}) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 6,
+          alignItems: "center",
+        }}
+      >
         <span style={{ fontSize: 12, color: "#5A6A7A", fontWeight: 500 }}>
           {filled} / {total} complete
         </span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: pct === 100 ? "#27AE60" : "#0B1E3D" }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: pct === 100 ? "#27AE60" : "#0B1E3D",
+          }}
+        >
           {pct}%
         </span>
       </div>
-      <div style={{ height: 6, background: "#eef0f3", borderRadius: 99, overflow: "hidden" }}>
+      <div
+        style={{
+          height: 6,
+          background: "#eef0f3",
+          borderRadius: 99,
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
             height: "100%",
@@ -142,6 +171,7 @@ function ProgressBar({ pct, filled, total }: { pct: number; filled: number; tota
 }
 
 export default function DriverProfileClient({
+  userNumber,
   initialName,
   email,
   initialPhone,
@@ -235,9 +265,13 @@ export default function DriverProfileClient({
     licenseExpiry.trim(),
   ];
   const detailsFilledCount = DETAIL_FIELDS.filter(Boolean).length;
-  const detailsPct = Math.round((detailsFilledCount / DETAIL_FIELDS.length) * 100);
+  const detailsPct = Math.round(
+    (detailsFilledCount / DETAIL_FIELDS.length) * 100,
+  );
 
-  const docsFilledCount = DOCUMENTS.filter((d) => Boolean(documents[d.key])).length;
+  const docsFilledCount = DOCUMENTS.filter((d) =>
+    Boolean(documents[d.key]),
+  ).length;
   const docsPct = Math.round((docsFilledCount / DOCUMENTS.length) * 100);
 
   const canSubmit = detailsPct === 100 && docsPct === 100;
@@ -481,7 +515,9 @@ export default function DriverProfileClient({
                 {statusCfg.label}
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: 13, color: "#5A6A7A" }}>{email}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#5A6A7A" }}>
+              #{userNumber} · {email}
+            </p>
           </div>
         </div>
 
@@ -538,7 +574,9 @@ export default function DriverProfileClient({
                   placeholder="1XXXXXXXXX"
                   value={phone.replace(/^\+?20/, "")}
                   onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    const digits = e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 10);
                     setPhone(digits ? `+20${digits}` : "");
                   }}
                   style={{
@@ -601,7 +639,11 @@ export default function DriverProfileClient({
 
         {/* Driver details */}
         <Section title="Driver details">
-          <ProgressBar pct={detailsPct} filled={detailsFilledCount} total={DETAIL_FIELDS.length} />
+          <ProgressBar
+            pct={detailsPct}
+            filled={detailsFilledCount}
+            total={DETAIL_FIELDS.length}
+          />
           <form onSubmit={saveDetails} noValidate style={cardStyle}>
             <div>
               <label htmlFor="d-carType" style={labelStyle}>
@@ -715,9 +757,24 @@ export default function DriverProfileClient({
                 }}
               >
                 {[
-                  [plateChar1, setPlateChar1, plateChar1Ref, plateChar2Ref] as const,
-                  [plateChar2, setPlateChar2, plateChar2Ref, plateChar3Ref] as const,
-                  [plateChar3, setPlateChar3, plateChar3Ref, plateDigitsRef] as const,
+                  [
+                    plateChar1,
+                    setPlateChar1,
+                    plateChar1Ref,
+                    plateChar2Ref,
+                  ] as const,
+                  [
+                    plateChar2,
+                    setPlateChar2,
+                    plateChar2Ref,
+                    plateChar3Ref,
+                  ] as const,
+                  [
+                    plateChar3,
+                    setPlateChar3,
+                    plateChar3Ref,
+                    plateDigitsRef,
+                  ] as const,
                 ].map(([val, setVal, currentRef, nextRef], i) => (
                   <input
                     key={i}
@@ -752,7 +809,9 @@ export default function DriverProfileClient({
                   placeholder="987"
                   value={plateDigits}
                   onChange={(e) =>
-                    setPlateDigits(e.target.value.replace(/\D/g, "").slice(0, 4))
+                    setPlateDigits(
+                      e.target.value.replace(/\D/g, "").slice(0, 4),
+                    )
                   }
                   style={{ ...inputStyle, textAlign: "center", flex: 1 }}
                 />
@@ -813,7 +872,11 @@ export default function DriverProfileClient({
 
         {/* Documents */}
         <Section title="Documents">
-          <ProgressBar pct={docsPct} filled={docsFilledCount} total={DOCUMENTS.length} />
+          <ProgressBar
+            pct={docsPct}
+            filled={docsFilledCount}
+            total={DOCUMENTS.length}
+          />
           <div style={{ ...cardStyle, gap: 10 }}>
             {DOCUMENTS.map((doc) => {
               const path = documents[doc.key];
@@ -926,8 +989,18 @@ export default function DriverProfileClient({
               your profile for review.
             </p>
             {!canSubmit && (
-              <p style={{ margin: 0, fontSize: 12, color: "#E65100", padding: "6px 10px", background: "#FFF3E0", borderRadius: 8 }}>
-                Complete all driver details ({detailsPct}%) and upload all documents ({docsPct}%) to enable submission.
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 12,
+                  color: "#E65100",
+                  padding: "6px 10px",
+                  background: "#FFF3E0",
+                  borderRadius: 8,
+                }}
+              >
+                Complete all driver details ({detailsPct}%) and upload all
+                documents ({docsPct}%) to enable submission.
               </p>
             )}
             {submitMsg && (

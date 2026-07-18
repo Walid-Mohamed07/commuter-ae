@@ -11,6 +11,13 @@ const PointSchema = new Schema(
 
 const AvailabilitySchema = new Schema(
   {
+    availabilityNumber: {
+      type: Number,
+      required: true,
+      unique: true,
+      sparse: true,
+      immutable: true,
+    },
     driverId: {
       type: Types.ObjectId,
       ref: "User",
