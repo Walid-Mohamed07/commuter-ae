@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
+import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongoose";
 import { Trip } from "@/models/Trip";
 import { User } from "@/models/User";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // TODO: restrict to admin once dashboard exists
-// GET /api/admin/getPrivateRideRequests?format=json|xlsx
+// GET /api/admin/getPrivateRideRequests
 
 interface StopLike {
   point?: { lat: number; lng: number };
@@ -87,10 +88,7 @@ const COLUMNS: (keyof Row)[] = [
   "totalStartedPassengers",
 ];
 
-export async function GET(req: NextRequest) {
-  const format =
-    req.nextUrl.searchParams.get("format") === "xlsx" ? "xlsx" : "json";
-
+export async function GET() {
   await connectDB();
 
   const trips = await Trip.find({
@@ -159,27 +157,23 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  if (format === "xlsx") {
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("PrivateRideRequests");
-    ws.addRow(COLUMNS);
-    for (const r of rows) ws.addRow(COLUMNS.map((c) => r[c]));
-    const buf = await wb.xlsx.writeBuffer();
-    return new NextResponse(Buffer.from(buf), {
-      headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition":
-          'attachment; filename="private-ride-requests.xlsx"',
-      },
-    });
-  }
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("PrivateRideRequests");
+  ws.addRow(COLUMNS);
+  for (const r of rows) ws.addRow(COLUMNS.map((c) => r[c]));
 
-  return new NextResponse(JSON.stringify(rows, null, 2), {
+  const zip = new JSZip();
+  zip.file("private-ride-requests.json", JSON.stringify(rows, null, 2));
+  zip.file(
+    "private-ride-requests.xlsx",
+    Buffer.from(await wb.xlsx.writeBuffer()),
+  );
+
+  const body = await zip.generateAsync({ type: "blob" });
+  return new NextResponse(body, {
     headers: {
-      "Content-Type": "application/json",
-      "Content-Disposition":
-        'attachment; filename="private-ride-requests.json"',
+      "Content-Type": "application/zip",
+      "Content-Disposition": 'attachment; filename="private-ride-requests.zip"',
     },
   });
 }
