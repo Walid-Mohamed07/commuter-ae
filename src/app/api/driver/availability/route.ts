@@ -3,7 +3,9 @@ import { connectDB } from "@/lib/db/mongoose";
 import { Availability } from "@/models/Availability";
 import { nextSequence } from "@/models/Counter";
 import { Driver } from "@/models/Driver";
+import { Station } from "@/models/Station";
 import { getSession } from "@/lib/auth/session";
+import { findNearestStation } from "@/lib/geo/stations";
 import type { GeoPoint as Point } from "@/types/geo";
 import { listDriverAvailability } from "@/lib/services/availability";
 
@@ -80,6 +82,27 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
 
+    const stationDocs = await Station.find({ active: true }).lean();
+    const canonicalStations = stationDocs.map((station) => ({
+      id: station.objectId,
+      name: station.name || station.direction || "",
+      lat: station.lat,
+      lng: station.lng,
+      popupInfo: [station.direction, station.landmark, station.stationType]
+        .filter(Boolean)
+        .join("\n"),
+    }));
+    const startNearestStation = findNearestStation(
+      startLocation.lat,
+      startLocation.lng,
+      canonicalStations,
+    );
+    const endNearestStation = findNearestStation(
+      endLocation.lat,
+      endLocation.lng,
+      canonicalStations,
+    );
+
     const docs = await Promise.all(
       dates.map(async (date: string) => ({
         availabilityNumber: await nextSequence("availabilityNumber"),
@@ -95,6 +118,22 @@ export async function POST(req: NextRequest) {
           lat: endLocation.lat,
           lng: endLocation.lng,
         },
+        ...(startNearestStation && {
+          startNearestStation: {
+            id: startNearestStation.id,
+            name: startNearestStation.name,
+            lat: startNearestStation.lat,
+            lng: startNearestStation.lng,
+          },
+        }),
+        ...(endNearestStation && {
+          endNearestStation: {
+            id: endNearestStation.id,
+            name: endNearestStation.name,
+            lat: endNearestStation.lat,
+            lng: endNearestStation.lng,
+          },
+        }),
         startTime,
         endTime,
       })),

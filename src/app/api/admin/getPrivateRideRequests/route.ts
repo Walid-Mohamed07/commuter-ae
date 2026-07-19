@@ -88,10 +88,24 @@ const COLUMNS: (keyof Row)[] = [
   "totalStartedPassengers",
 ];
 
+function getTomorrowDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export async function GET() {
   await connectDB();
 
+  const tomorrow = getTomorrowDate();
+
   const trips = await Trip.find({
+    date: tomorrow,
     status: "submitted",
     paymentStatus: "paid",
     vehicleType: { $in: ["private_car", "taxi_private"] },
