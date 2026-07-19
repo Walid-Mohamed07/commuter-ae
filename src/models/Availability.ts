@@ -9,6 +9,16 @@ const PointSchema = new Schema(
   { _id: false },
 );
 
+const StationSchema = new Schema(
+  {
+    id: { type: Number, required: true },
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    name: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const AvailabilitySchema = new Schema(
   {
     availabilityNumber: {
@@ -27,6 +37,8 @@ const AvailabilitySchema = new Schema(
     date: { type: String, required: true }, // "YYYY-MM-DD"
     startLocation: { type: PointSchema, required: true },
     endLocation: { type: PointSchema, required: true },
+    startNearestStation: { type: StationSchema, required: false },
+    endNearestStation: { type: StationSchema, required: false },
     startTime: { type: String, required: true }, // "HH:MM"
     endTime: { type: String, required: true }, // "HH:MM"
   },
