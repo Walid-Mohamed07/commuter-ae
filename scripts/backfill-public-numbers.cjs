@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { loadEnvConfig } = require("@next/env");
 
 const collections = [
     { name: "users", field: "userNumber", sequence: "userNumber" },
@@ -59,6 +60,7 @@ async function backfillCollection(db, config) {
 }
 
 async function main() {
+    loadEnvConfig(process.cwd());
     if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is not set");
 
     await mongoose.connect(process.env.MONGODB_URI, {

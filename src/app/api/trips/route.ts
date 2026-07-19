@@ -17,7 +17,11 @@ import { computeArrivalTime, computePickupTime } from "@/lib/time/pickupWindow";
 import { isDateInWindow } from "@/lib/time/bookingDates";
 import { getVehicles } from "@/lib/db/getVehicles";
 import { fetchDirections } from "@/app/api/directions/route";
-import { findNearestStations, type StationOption } from "@/lib/geo/stations";
+import {
+  findNearestStations,
+  findNearestStation,
+  type StationOption,
+} from "@/lib/geo/stations";
 import type { StopInput, TripInput } from "@/types/forms";
 import type { PaymentStatus } from "@/types/booking";
 import { listUserTrips } from "@/lib/services/trips";
@@ -120,6 +124,18 @@ export async function POST(req: NextRequest) {
 
   const vehiclesMap = await getVehicles();
   const allowedVehicles = Object.keys(vehiclesMap);
+
+  await connectDB();
+  const stationDocs = await Station.find({ active: true }).lean();
+  const canonicalStations = stationDocs.map((station) => ({
+    id: station.objectId,
+    name: station.name || station.direction || "",
+    lat: station.lat,
+    lng: station.lng,
+    popupInfo: [station.direction, station.landmark, station.stationType]
+      .filter(Boolean)
+      .join("\n"),
+  }));
 
   interface ServerTrip {
     pickup: { address: string; lat: number; lng: number };
@@ -336,6 +352,19 @@ export async function POST(req: NextRequest) {
         privateRoutePrice(fareLegs, vKey, vehiclesMap) +
         waitingCostEgp(totalWaitingMinutes, vKey, vehiclesMap);
 
+      // Nearest stations attached for admin/export use only — never shown to
+      // the user, never affects route/duration/price.
+      const nearPickup = findNearestStation(
+        t.pickup.lat,
+        t.pickup.lng,
+        canonicalStations,
+      );
+      const nearDropoff = findNearestStation(
+        t.dropoff.lat,
+        t.dropoff.lng,
+        canonicalStations,
+      );
+
       serverTrips.push({
         pickup: t.pickup,
         dropoff: t.dropoff,
@@ -350,6 +379,22 @@ export async function POST(req: NextRequest) {
         numberOfPassengers,
         stops,
         passengers: serverPassengers,
+        ...(nearPickup && {
+          pickupStation: {
+            id: nearPickup.id,
+            lat: nearPickup.lat,
+            lng: nearPickup.lng,
+            name: nearPickup.name,
+          },
+        }),
+        ...(nearDropoff && {
+          dropoffStation: {
+            id: nearDropoff.id,
+            lat: nearDropoff.lat,
+            lng: nearDropoff.lng,
+            name: nearDropoff.name,
+          },
+        }),
       });
       continue;
     }
@@ -370,17 +415,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
-    const stations = await Station.find({ active: true }).lean();
-    const canonicalStations = stations.map((station) => ({
-      id: station.objectId,
-      name: station.name || station.direction || "",
-      lat: station.lat,
-      lng: station.lng,
-      popupInfo: [station.direction, station.landmark, station.stationType]
-        .filter(Boolean)
-        .join("\n"),
-    }));
     const pickupStationOptions = findNearestStations(
       t.pickup.lat,
       t.pickup.lng,

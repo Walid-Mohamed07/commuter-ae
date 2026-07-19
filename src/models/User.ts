@@ -51,5 +51,10 @@ UserSchema.index(
   { unique: true, partialFilterExpression: { email: { $type: "string" } } },
 );
 
+// const existingUserModel = models.User;
+// if (existingUserModel && !existingUserModel.schema.path("userNumber")) {
+//   existingUserModel.schema.add({ userNumber: UserSchema.obj.userNumber });
+// }
+
 export type UserDoc = InferSchemaType<typeof UserSchema>;
 export const User = models.User || model("User", UserSchema);
