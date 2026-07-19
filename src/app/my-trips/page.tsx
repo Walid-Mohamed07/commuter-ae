@@ -13,6 +13,7 @@ import { listUserTrips } from "@/lib/services/trips";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
+import { PLACEHOLDER_DRIVER } from "@/lib/config/driverPlaceholder";
 import AppHeader from "@/components/layout/AppHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import StatusGroupFilter from "@/components/shared/StatusGroupFilter";
@@ -20,6 +21,7 @@ import DateRangeCalendar from "@/components/shared/DateRangeCalendar";
 import Pagination from "@/components/shared/Pagination";
 import type { BookingStatus, TripListRow } from "@/types/booking";
 import ContinueCheckoutButton from "@/components/shared/ContinueCheckoutButton";
+import RateTripModal from "@/components/trips/RateTripModal";
 
 export const metadata = { title: "My trips — Commuter" };
 export const dynamic = "force-dynamic";
@@ -292,6 +294,8 @@ export default async function MyTripsPage({
                       VEHICLES[trip.vehicleType as VehicleKey]?.label ??
                       trip.vehicleType;
                     const timedOut = trip.status === "time_out";
+                    const isOngoing =
+                      trip.status === "active" || trip.status === "matching";
                     const needsPayment =
                       trip.paymentStatus === "pending" ||
                       trip.paymentStatus === "failed";
@@ -397,6 +401,127 @@ export default async function MyTripsPage({
                                   STATUS_PILL.pending_payment)}
                               />
                             </div>
+
+                            {/* Driver + car (ongoing only) */}
+                            {isOngoing && (
+                              <div
+                                style={{
+                                  marginBottom: 12,
+                                  background:
+                                    "linear-gradient(135deg, #F6FBFA 0%, #EEFBF8 100%)",
+                                  border: "1px solid #D6F5EE",
+                                  borderRadius: 14,
+                                  overflow: "hidden",
+                                }}
+                              >
+                                {/* Driver row */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    padding: "12px 14px",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 40,
+                                      height: 40,
+                                      borderRadius: "50%",
+                                      flexShrink: 0,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      background: "#0B1E3D",
+                                      color: "#fff",
+                                      fontWeight: 800,
+                                      fontSize: 15,
+                                    }}
+                                    aria-hidden="true"
+                                  >
+                                    {PLACEHOLDER_DRIVER.name
+                                      .split(" ")
+                                      .filter(Boolean)
+                                      .slice(0, 2)
+                                      .map((p) => p[0]?.toUpperCase())
+                                      .join("")}
+                                  </div>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <p
+                                      style={{
+                                        margin: 0,
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        color: "#00806E",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.05em",
+                                      }}
+                                    >
+                                      Driver
+                                    </p>
+                                    <p
+                                      style={{
+                                        margin: "1px 0 0",
+                                        fontSize: 14,
+                                        fontWeight: 700,
+                                        color: "#0B1E3D",
+                                      }}
+                                    >
+                                      {PLACEHOLDER_DRIVER.name}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Car + plate row */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    padding: "10px 14px",
+                                    borderTop: "1px solid #D6F5EE",
+                                    background: "rgba(255,255,255,0.5)",
+                                  }}
+                                >
+                                  <Car
+                                    size={16}
+                                    color="#00806E"
+                                    style={{ flexShrink: 0 }}
+                                    aria-hidden="true"
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: 13,
+                                      fontWeight: 600,
+                                      color: "#0B1E3D",
+                                    }}
+                                  >
+                                    {PLACEHOLDER_DRIVER.carBrand}{" "}
+                                    {PLACEHOLDER_DRIVER.carModel}{" "}
+                                    {PLACEHOLDER_DRIVER.modelYear}
+                                  </span>
+                                  <span
+                                    style={{
+                                      marginLeft: "auto",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      padding: "4px 10px",
+                                      borderRadius: 8,
+                                      background: "#fff",
+                                      border: "1px solid #CBE9E2",
+                                      fontSize: 13,
+                                      fontWeight: 800,
+                                      color: "#0B1E3D",
+                                      letterSpacing: "0.08em",
+                                      fontVariantNumeric: "tabular-nums",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {PLACEHOLDER_DRIVER.plate}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Pickup → Dropoff */}
                             <div
@@ -540,6 +665,11 @@ export default async function MyTripsPage({
                               amountEgp={trip.bookingAmountEgp}
                               walletBalance={walletBalance}
                             />
+                          </div>
+                        )}
+                        {trip.status === "completed" && (
+                          <div style={{ padding: "0 18px 16px" }}>
+                            <RateTripModal tripId={trip.id} />
                           </div>
                         )}
                       </div>

@@ -10,6 +10,11 @@ import type {
 } from "@/types/booking";
 import type { GeoPoint, StationSelection } from "@/types/geo";
 
+export interface StationOption extends StationSelection {
+  distanceKm: number;
+  walkingMin: number;
+}
+
 const STATUS_GROUPS: Record<string, BookingStatus[]> = {
   pending_payment: ["pending_payment"],
   upcoming: ["submitted", "confirmed"],
@@ -149,10 +154,19 @@ export interface UserTripDetail {
   dropoffStation?: StationSelection;
   walkingMinToStation?: number;
   walkingMinFromStation?: number;
+  pickupStationOptions: StationOption[];
+  dropoffStationOptions: StationOption[];
   passengers: {
     sameAsMain: boolean;
     pickup?: GeoPoint | null;
     dropoff?: GeoPoint | null;
+  }[];
+  numberOfPassengers: number;
+  stops: {
+    point: GeoPoint;
+    alighting: number;
+    boarding: number;
+    waitingMinutes: number;
   }[];
   paymentStatus: PaymentStatus;
   status: string;
@@ -189,10 +203,19 @@ export async function getUserTrip(
     dropoffStation?: StationSelection;
     walkingMinToStation?: number;
     walkingMinFromStation?: number;
+    pickupStationOptions?: StationOption[];
+    dropoffStationOptions?: StationOption[];
     passengers: {
       sameAsMain: boolean;
       pickup?: GeoPoint | null;
       dropoff?: GeoPoint | null;
+    }[];
+    numberOfPassengers: number;
+    stops: {
+      point: GeoPoint;
+      alighting: number;
+      boarding: number;
+      waitingMinutes: number;
     }[];
     paymentStatus: string;
     status: string;
@@ -206,6 +229,8 @@ export async function getUserTrip(
     id: String(trip._id),
     requestId: String(trip.requestId),
     paymentStatus: (trip.paymentStatus as PaymentStatus) ?? "pending",
+    pickupStationOptions: trip.pickupStationOptions ?? [],
+    dropoffStationOptions: trip.dropoffStationOptions ?? [],
     createdAt:
       trip.createdAt instanceof Date
         ? trip.createdAt.toISOString()
