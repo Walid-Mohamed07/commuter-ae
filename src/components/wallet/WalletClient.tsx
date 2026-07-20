@@ -114,7 +114,7 @@ export default function WalletClient() {
       setBusy(false);
     }
   }
-// hi
+  // hi
   return (
     <main
       style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
@@ -362,7 +362,7 @@ export default function WalletClient() {
                     fontWeight: 800,
                     fontSize: 14,
                     fontVariantNumeric: "tabular-nums",
-                    color: isCredit ? "#27AE60" : "#0B1E3D",
+                    color: isCredit ? "#27AE60" : "#FF2C2C",
                   }}
                 >
                   {isCredit ? "+" : "−"}

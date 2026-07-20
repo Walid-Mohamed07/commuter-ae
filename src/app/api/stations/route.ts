@@ -7,6 +7,8 @@ function serialize(s: any) {
   return {
     id: s.objectId,
     name: s.name || s.direction || "",
+    direction: s.direction,
+    stationType: s.stationType,
     lat: s.lat,
     lng: s.lng,
     popupInfo: [s.direction, s.landmark, s.stationType]
@@ -53,8 +55,8 @@ export async function POST(req: NextRequest) {
     objectId: nextObjectId,
     name: String(body.name ?? ""),
     direction: String(body.direction ?? ""),
-    landmark: String(body.landmark ?? ""),
     stationType: String(body.stationType ?? ""),
+    landmark: String(body.landmark ?? ""),
     lat,
     lng,
     active: body.active !== false,
