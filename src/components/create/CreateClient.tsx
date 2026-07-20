@@ -964,7 +964,7 @@ export default function CreateClient({ userEmail }: Props) {
                                     {leg.passengers != null &&
                                       ` · ${leg.passengers} passenger${leg.passengers === 1 ? "" : "s"}`}
                                     {leg.priceEgp != null &&
-                                      ` · ${leg.priceEgp} EGP`}
+                                      ` · ${Math.round(leg.priceEgp)} EGP`}
                                   </span>
                                 )}
                                 {t.stops[pointIndex - 1] && (

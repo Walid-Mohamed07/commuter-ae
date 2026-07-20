@@ -548,7 +548,7 @@ export default function TripCycle({
     }
 
     let cancelled = false;
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRouteLoading(true);
     fetchRoute([routeFrom, routeTo])
       .then((routes) => {
@@ -678,7 +678,7 @@ export default function TripCycle({
         });
         const price = Math.round(
           legPrices.reduce((sum, legPrice) => sum + legPrice, 0) +
-          waitingCostEgp(totalWaitingMinutes, vehicleType, vMap)
+            waitingCostEgp(totalWaitingMinutes, vehicleType, vMap),
         );
         onChange({
           ...data,
@@ -1268,35 +1268,39 @@ export default function TripCycle({
                 iconColor="#0B1E3D"
                 savedAddresses={savedAddresses}
               />
-              <button
-                type="button"
-                onClick={() => handleCurrentLocation("pickup")}
-                disabled={locating === "pickup"}
-                style={pickBtnStyle(false)}
-              >
-                {locating === "pickup" ? (
-                  <Loader2 size={13} className="spin" aria-hidden="true" />
-                ) : (
-                  <Navigation size={13} aria-hidden="true" />
-                )}
-                Use my current location
-              </button>
-              {data.pickup && !isAlreadySaved(data.pickup, savedAddresses) && (
-                <SaveAddressButton
-                  point={data.pickup}
-                  onSaved={(s) => onAddressSaved?.(s)}
-                />
-              )}
-              {onPickFromMap && (
+              <div className="flex flex-row gap-2 mt-2">
                 <button
                   type="button"
-                  onClick={() => onPickFromMap("pickup")}
-                  style={pickBtnStyle(picking === "pickup")}
+                  onClick={() => handleCurrentLocation("pickup")}
+                  disabled={locating === "pickup"}
+                  style={pickBtnStyle(false)}
                 >
-                  <MapPin size={13} aria-hidden="true" />
-                  {picking === "pickup" ? "Click the map…" : "Pick from map"}
+                  {locating === "pickup" ? (
+                    <Loader2 size={13} className="spin" aria-hidden="true" />
+                  ) : (
+                    <Navigation size={13} aria-hidden="true" />
+                  )}
+                  Use my current location
                 </button>
-              )}
+                {data.pickup &&
+                  !isAlreadySaved(data.pickup, savedAddresses) && (
+                    <SaveAddressButton
+                      point={data.pickup}
+                      onSaved={(s) => onAddressSaved?.(s)}
+                    />
+                  )}
+                {onPickFromMap && (
+                  <button
+                    type="button"
+                    onClick={() => onPickFromMap("pickup")}
+                    style={pickBtnStyle(picking === "pickup")}
+                  >
+                    <MapPin size={13} aria-hidden="true" />
+                    {picking === "pickup" ? "Click the map…" : "Pick from map"}
+                  </button>
+                )}
+              </div>
+
               {isSharedVehicle(data.vehicleType) &&
                 data.pickup &&
                 data.pickupStation && (
