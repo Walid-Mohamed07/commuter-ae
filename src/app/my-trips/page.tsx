@@ -9,7 +9,7 @@ import {
   Route,
 } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { listUserTrips } from "@/lib/services/trips";
+import { listUserTrips, listDriverTrips } from "@/lib/services/trips";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
@@ -105,45 +105,7 @@ export default async function MyTripsPage({
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-trips");
 
-  if (session.role === "driver") {
-    return (
-      <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-        <AppHeader
-          authed
-          email={session.email}
-          role="driver"
-          variant="app"
-          backHref="/"
-        />
-        <main
-          style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
-        >
-          <div style={{ marginBottom: 22 }}>
-            <h1
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "#0B1E3D",
-                margin: "0 0 4px",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              My trips
-            </h1>
-            <p style={{ fontSize: 14, color: "#5A6A7A", margin: 0 }}>
-              Trips assigned to you will appear here.
-            </p>
-          </div>
-          <EmptyState
-            icon="🚗"
-            title="No assigned trips yet"
-            description="Once a trip is assigned to you, it will show up here."
-          />
-        </main>
-      </div>
-    );
-  }
-
+  const isDriver = session.role === "driver";
   const params = await searchParams;
   const groupFilter =
     typeof params.group === "string" &&
@@ -161,18 +123,22 @@ export default async function MyTripsPage({
   const dateTo = typeof params.dateTo === "string" ? params.dateTo : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  const result = await listUserTrips(session.userId, {
+  const listOptions = {
     page,
     pageSize: PAGE_SIZE,
     statusGroup: groupFilter,
     dateFrom,
     dateTo,
-  });
+  };
+
+  const result = isDriver
+    ? await listDriverTrips(session.userId, listOptions)
+    : await listUserTrips(session.userId, listOptions);
   const { rows: trips, total } = result;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const wallet = await getOrCreateWallet(session.userId);
-  const walletBalance = wallet.balanceEgp ?? 0;
+  const wallet = isDriver ? null : await getOrCreateWallet(session.userId);
+  const walletBalance = wallet?.balanceEgp ?? 0;
 
   // Today's date in YYYY-MM-DD format for comparison
   const todayStr = new Date().toISOString().split("T")[0];
@@ -189,7 +155,13 @@ export default async function MyTripsPage({
 
   return (
     <div style={{ minHeight: "100dvh", background: "#f8f9fa" }}>
-      <AppHeader authed email={session.email} variant="app" backHref="/" />
+      <AppHeader
+        authed
+        email={session.email}
+        role={isDriver ? "driver" : "passenger"}
+        variant="app"
+        backHref={isDriver ? "/my-trips" : "/"}
+      />
 
       <main
         style={{ maxWidth: 640, margin: "0 auto", padding: "28px 20px 56px" }}
@@ -210,8 +182,12 @@ export default async function MyTripsPage({
             {total === 0
               ? hasFilters
                 ? "No trips match these filters."
-                : "No trips yet."
-              : `${total} trip${total === 1 ? "" : "s"} in your history`}
+                : isDriver
+                  ? "No assigned trips yet."
+                  : "No trips yet."
+              : isDriver
+                ? `${total} assigned trip${total === 1 ? "" : "s"}`
+                : `${total} trip${total === 1 ? "" : "s"} in your history`}
           </p>
         </div>
 
@@ -230,29 +206,33 @@ export default async function MyTripsPage({
 
         {trips.length === 0 ? (
           <EmptyState
-            icon="🧾"
-            title={hasFilters ? "Nothing here" : "No trips yet"}
+            icon={isDriver ? "🚗" : "🧾"}
+            title={hasFilters ? "Nothing here" : isDriver ? "No assigned trips yet" : "No trips yet"}
             description={
               hasFilters
                 ? "Try clearing the filters to see your full history."
-                : "Every trip from your requests will be logged here."
+                : isDriver
+                  ? "Once a trip is assigned to you, it will show up here."
+                  : "Every trip from your requests will be logged here."
             }
             action={
-              <Link
-                href="/create"
-                style={{
-                  display: "inline-block",
-                  padding: "12px 24px",
-                  background: "#0B1E3D",
-                  color: "#fff",
-                  borderRadius: 10,
-                  fontWeight: 700,
-                  fontSize: 14,
-                  textDecoration: "none",
-                }}
-              >
-                Book a ride
-              </Link>
+              !isDriver ? (
+                <Link
+                  href="/create"
+                  style={{
+                    display: "inline-block",
+                    padding: "12px 24px",
+                    background: "#0B1E3D",
+                    color: "#fff",
+                    borderRadius: 10,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    textDecoration: "none",
+                  }}
+                >
+                  Book a ride
+                </Link>
+              ) : undefined
             }
           />
         ) : (
@@ -402,8 +382,8 @@ export default async function MyTripsPage({
                               />
                             </div>
 
-                            {/* Driver + car (ongoing only) */}
-                            {isOngoing && (
+                            {/* Driver + car (ongoing only — passenger view) */}
+                            {!isDriver && isOngoing && (
                               <div
                                 style={{
                                   marginBottom: 12,
@@ -658,7 +638,7 @@ export default async function MyTripsPage({
                             </div>
                           </div>
                         </Link>
-                        {needsPayment && (
+                        {!isDriver && needsPayment && (
                           <div style={{ padding: "0 18px 16px" }}>
                             <ContinueCheckoutButton
                               bookingId={trip.requestId}
@@ -667,7 +647,7 @@ export default async function MyTripsPage({
                             />
                           </div>
                         )}
-                        {trip.status === "completed" && (
+                        {!isDriver && trip.status === "completed" && (
                           <div style={{ padding: "0 18px 16px" }}>
                             <RateTripModal tripId={trip.id} />
                           </div>

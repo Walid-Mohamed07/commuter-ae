@@ -25,15 +25,33 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, phone } = body;
+    const { name, phone, profilePic } = body;
     if (!name?.trim())
       return NextResponse.json({ error: "Name is required." }, { status: 400 });
+
+    const userUpdate: Record<string, unknown> = { name: name.trim() };
+    if (phone !== undefined) {
+      const trimmed = typeof phone === "string" ? phone.trim() : "";
+      if (trimmed && !/^\+20\d{10}$/.test(trimmed)) {
+        return NextResponse.json(
+          { error: "Phone must be 10 digits after +20." },
+          { status: 400 },
+        );
+      }
+      userUpdate.phone = trimmed || undefined;
+    }
+    if (
+      typeof profilePic === "string" &&
+      profilePic.startsWith("/assets/uploads/")
+    ) {
+      userUpdate.profilePic = profilePic;
+    }
 
     await connectDB();
     const user = await User.findByIdAndUpdate(
       session.userId,
-      { name: name.trim(), phone: phone?.trim() || undefined },
-      { new: true, select: "name email phone role" },
+      userUpdate,
+      { new: true, select: "name email phone role profilePic" },
     ).lean();
 
     if (!user)
@@ -86,6 +104,8 @@ export async function PATCH(req: NextRequest) {
       "carLicenseFront",
       "carLicenseBack",
       "criminalRecord",
+      "profilePic",
+      "carImage",
     ];
     if (documents && typeof documents === "object") {
       for (const key of ALLOWED_DOC_KEYS) {

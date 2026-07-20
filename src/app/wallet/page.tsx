@@ -22,7 +22,7 @@ export default async function WalletPage() {
       />
 
       <Suspense fallback={null}>
-        <WalletClient />
+        <WalletClient role={session.role} />
       </Suspense>
     </div>
   );

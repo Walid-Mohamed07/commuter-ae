@@ -66,6 +66,7 @@ const TripSchema = new Schema(
       index: true,
     },
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
+    driverId: { type: Types.ObjectId, ref: "User", required: false, index: true },
     date: { type: String, required: true, index: true },
     cycleIndex: { type: Number, required: true, min: 0 },
     pickup: { type: PointSchema, required: true },
@@ -124,6 +125,7 @@ const TripSchema = new Schema(
 
 TripSchema.index({ requestId: 1, date: 1 });
 TripSchema.index({ userId: 1, date: -1 });
+TripSchema.index({ driverId: 1, date: -1 });
 
 // const existingTripModel = models.Trip;
 // if (existingTripModel && !existingTripModel.schema.path("tripNumber")) {

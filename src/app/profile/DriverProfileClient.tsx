@@ -373,7 +373,10 @@ export default function DriverProfileClient({
         body: formData,
       });
       const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) return;
+      if (!uploadRes.ok) {
+        console.error(uploadData.error ?? "Upload failed.");
+        return;
+      }
 
       const res = await fetch("/api/auth/me", {
         method: "PATCH",
@@ -384,11 +387,15 @@ export default function DriverProfileClient({
           documents: { [key]: uploadData.path },
         }),
       });
+      const data = await res.json();
       if (res.ok) {
         setDocuments((d) => ({ ...d, [key]: uploadData.path }));
+      } else {
+        console.error(data.error ?? "Failed to save document.");
       }
     } finally {
       setUploading((u) => ({ ...u, [key]: false }));
+      if (fileInputs.current[key]) fileInputs.current[key]!.value = "";
     }
   }
 
@@ -437,7 +444,7 @@ export default function DriverProfileClient({
         email={email}
         role="driver"
         variant="app"
-        backHref="/"
+        backHref="/my-trips"
       />
 
       <main

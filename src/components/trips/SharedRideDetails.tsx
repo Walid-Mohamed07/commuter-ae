@@ -1,5 +1,5 @@
 import { MapPin, Users, Clock, Route as RouteIcon } from "lucide-react";
-import InfoTooltip from "@/components/shared/InfoTooltip";
+import { RideDetailRow, TripStatBlock } from "@/components/trips/TripDetailParts";
 import type { GeoPoint, StationSelection } from "@/types/geo";
 import type { StationOption } from "@/lib/services/trips";
 
@@ -20,32 +20,6 @@ interface Props {
   to12h: (hhmm: string) => string;
 }
 
-function Row({
-  icon,
-  color,
-  label,
-  sub,
-}: {
-  icon: React.ReactNode;
-  color: string;
-  label: string;
-  sub?: string;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <span style={{ marginTop: 2, flexShrink: 0, color }}>{icon}</span>
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 14, color: "#0B1E3D", fontWeight: 600 }}>
-          {label}
-        </p>
-        {sub && (
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9aa7b4" }}>{sub}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function SharedRideDetails({
   pickup,
   dropoff,
@@ -62,8 +36,6 @@ export default function SharedRideDetails({
   durationMinutes,
   to12h,
 }: Props) {
-  // Match the selected station against its option to get the exact walk
-  // distance recorded at booking time (real data, not estimated).
   const pickupOpt = pickupStationOptions.find((o) => o.id === pickupStation?.id);
   const dropoffOpt = dropoffStationOptions.find(
     (o) => o.id === dropoffStation?.id,
@@ -113,15 +85,19 @@ export default function SharedRideDetails({
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Origin */}
-        <Row
+        <RideDetailRow
           icon={<MapPin size={15} />}
           color="#00C2A8"
-          label={pickup.address}
-          sub={`Origin · Pickup time ${to12h(pickupTime)}`}
+          headline="Origin"
+          value={pickup.address}
+        />
+        <RideDetailRow
+          icon={<Clock size={15} />}
+          color="#00C2A8"
+          headline="Pickup time"
+          value={to12h(pickupTime)}
         />
 
-        {/* Pickup station */}
         {pickupStation && (
           <div
             style={{
@@ -130,24 +106,26 @@ export default function SharedRideDetails({
               paddingLeft: 16,
             }}
           >
-            <Row
+            <RideDetailRow
               icon={<MapPin size={15} />}
               color="#00C2A8"
-              label={pickupStation.name}
-              sub={`Pickup station${walkToMin ? ` · ${walkToMin} min walk` : ""}`}
+              headline="Pickup station"
+              value={
+                walkToMin
+                  ? `${pickupStation.name} · ${walkToMin} min walk`
+                  : pickupStation.name
+              }
             />
           </div>
         )}
 
-        {/* Total passengers */}
-        <Row
+        <RideDetailRow
           icon={<Users size={15} />}
           color="#0B1E3D"
-          label={`${extraPassengers} extra passenger${extraPassengers === 1 ? "" : "s"}`}
-          sub="Extra passengers"
+          headline="Extra passengers"
+          value={`${extraPassengers} extra passenger${extraPassengers === 1 ? "" : "s"}`}
         />
 
-        {/* Dropoff station */}
         {dropoffStation && (
           <div
             style={{
@@ -156,49 +134,56 @@ export default function SharedRideDetails({
               paddingLeft: 16,
             }}
           >
-            <Row
+            <RideDetailRow
               icon={<MapPin size={15} />}
               color="#E74C3C"
-              label={dropoffStation.name}
-              sub={`Dropoff station${walkFromMin ? ` · ${walkFromMin} min walk` : ""}`}
+              headline="Dropoff station"
+              value={
+                walkFromMin
+                  ? `${dropoffStation.name} · ${walkFromMin} min walk`
+                  : dropoffStation.name
+              }
             />
           </div>
         )}
 
-        {/* Destination */}
-        <Row
+        <RideDetailRow
           icon={<MapPin size={15} />}
           color="#E74C3C"
-          label={dropoff.address}
-          sub={`Destination · Drop-off ${to12h(arrivalTime)}`}
+          headline="Destination"
+          value={dropoff.address}
+        />
+        <RideDetailRow
+          icon={<Clock size={15} />}
+          color="#E74C3C"
+          headline="Drop-off time"
+          value={to12h(arrivalTime)}
         />
       </div>
 
-      {/* Totals with hover breakdown */}
       <div
         style={{
           display: "flex",
-          gap: 24,
+          gap: 12,
           marginTop: 16,
           paddingTop: 14,
           borderTop: "1px solid #f4f6f8",
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <RouteIcon size={15} color="#0B1E3D" aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D" }}>
-            {totalKm.toFixed(1)} km total
-          </span>
-          <InfoTooltip lines={segLines} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Clock size={15} color="#0B1E3D" aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D" }}>
-            {totalMin} min total
-          </span>
-          <InfoTooltip lines={segLines} />
-        </div>
+        <TripStatBlock
+          icon={<RouteIcon size={15} color="#0B1E3D" aria-hidden="true" />}
+          headline="Total distance"
+          value={`${totalKm.toFixed(1)} km`}
+          lines={segLines}
+        />
+        <TripStatBlock
+          icon={<Clock size={15} color="#0B1E3D" aria-hidden="true" />}
+          headline="Total duration"
+          value={`${totalMin} min`}
+          lines={segLines}
+          accent="#F5A623"
+        />
       </div>
     </div>
   );

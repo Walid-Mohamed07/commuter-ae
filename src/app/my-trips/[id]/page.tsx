@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { getUserTrip } from "@/lib/services/trips";
+import { getUserTrip, getDriverTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
@@ -102,31 +102,39 @@ function Detail({
   value: string;
 }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-      <span style={{ marginTop: 1, flexShrink: 0 }}>{icon}</span>
-      <div>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#9aa7b4",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {label}
-        </p>
-        <p
-          style={{
-            margin: "2px 0 0",
-            fontSize: 14,
-            color: "#0B1E3D",
-            fontWeight: 600,
-          }}
-        >
-          {value}
-        </p>
+    <div
+      style={{
+        padding: "12px 14px",
+        borderRadius: 12,
+        background: "#f8f9fa",
+        border: "1px solid #eef0f3",
+      }}
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <span style={{ marginTop: 2, flexShrink: 0 }}>{icon}</span>
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              fontWeight: 800,
+              color: "#0B1E3D",
+              lineHeight: 1.25,
+            }}
+          >
+            {label}
+          </p>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#5A6A7A",
+            }}
+          >
+            {value}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -142,7 +150,11 @@ export default async function TripDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-trips/${id}`);
-  const trip = await getUserTrip(session.userId, id);
+
+  const isDriver = session.role === "driver";
+  const trip = isDriver
+    ? await getDriverTrip(session.userId, id)
+    : await getUserTrip(session.userId, id);
 
   if (!trip) notFound();
 
@@ -160,6 +172,7 @@ export default async function TripDetailPage({
       <AppHeader
         authed
         email={session.email}
+        role={isDriver ? "driver" : "passenger"}
         variant="app"
         backHref="/my-trips"
       />
@@ -207,7 +220,7 @@ export default async function TripDetailPage({
               {trip.priceEgp} EGP
             </span>
           </div>
-          {status === "completed" && (
+          {status === "completed" && !isDriver && (
             <div style={{ marginTop: 12 }}>
               <RateTripModal tripId={id} />
             </div>
@@ -297,12 +310,12 @@ export default async function TripDetailPage({
           />
         )}
 
-        {/* Ongoing trip: driver card + chat */}
+        {/* Ongoing trip: driver card + chat (passenger) / chat only (driver) */}
         {isOngoing && (
           <>
-            <DriverCard driver={PLACEHOLDER_DRIVER} />
+            {!isDriver && <DriverCard driver={PLACEHOLDER_DRIVER} />}
             <div style={{ marginBottom: 16 }}>
-              <TripChat tripId={id} role="user" />
+              <TripChat tripId={id} role={isDriver ? "driver" : "user"} />
             </div>
           </>
         )}

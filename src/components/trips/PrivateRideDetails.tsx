@@ -1,5 +1,5 @@
 import { MapPin, Users, Clock, Route as RouteIcon, LogIn, LogOut } from "lucide-react";
-import InfoTooltip from "@/components/shared/InfoTooltip";
+import { RideDetailRow, TripStatBlock } from "@/components/trips/TripDetailParts";
 import type { GeoPoint } from "@/types/geo";
 
 interface Stop {
@@ -21,8 +21,6 @@ interface Props {
   to12h: (hhmm: string) => string;
 }
 
-// Haversine distance in km — used only to proportionally split the trip's
-// total (road) distance/time across segments for the hover breakdown.
 function haversineKm(a: GeoPoint, b: GeoPoint): number {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -33,32 +31,6 @@ function haversineKm(a: GeoPoint, b: GeoPoint): number {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function Row({
-  icon,
-  color,
-  label,
-  sub,
-}: {
-  icon: React.ReactNode;
-  color: string;
-  label: string;
-  sub?: string;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <span style={{ marginTop: 2, flexShrink: 0, color }}>{icon}</span>
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 14, color: "#0B1E3D", fontWeight: 600 }}>
-          {label}
-        </p>
-        {sub && (
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9aa7b4" }}>{sub}</p>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export default function PrivateRideDetails({
@@ -72,7 +44,6 @@ export default function PrivateRideDetails({
   durationMinutes,
   to12h,
 }: Props) {
-  // Segment split for the tooltip: pickup → first stop → ... → last stop → dropoff.
   const chain: GeoPoint[] = [pickup, ...stops.map((s) => s.point), dropoff];
   const segKm = chain.slice(1).map((pt, i) => haversineKm(chain[i], pt));
   const segTotal = segKm.reduce((a, b) => a + b, 0) || 1;
@@ -111,23 +82,26 @@ export default function PrivateRideDetails({
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Origin */}
-        <Row
+        <RideDetailRow
           icon={<MapPin size={15} />}
           color="#00C2A8"
-          label={pickup.address}
-          sub={`Origin · Pickup time ${to12h(pickupTime)}`}
+          headline="Origin"
+          value={pickup.address}
+        />
+        <RideDetailRow
+          icon={<Clock size={15} />}
+          color="#00C2A8"
+          headline="Pickup time"
+          value={to12h(pickupTime)}
         />
 
-        {/* Total passengers */}
-        <Row
+        <RideDetailRow
           icon={<Users size={15} />}
           color="#0B1E3D"
-          label={`${numberOfPassengers} passenger${numberOfPassengers === 1 ? "" : "s"}`}
-          sub="Total passengers"
+          headline="Total passengers"
+          value={`${numberOfPassengers} passenger${numberOfPassengers === 1 ? "" : "s"}`}
         />
 
-        {/* Stops */}
         {stops.map((s, i) => (
           <div
             key={i}
@@ -137,18 +111,18 @@ export default function PrivateRideDetails({
               paddingLeft: 16,
             }}
           >
-            <Row
+            <RideDetailRow
               icon={<MapPin size={15} />}
               color="#F5A623"
-              label={s.point.address}
-              sub={`Stop ${i + 1}`}
+              headline={`Stop ${i + 1}`}
+              value={s.point.address}
             />
             <div
               style={{
                 display: "flex",
                 gap: 16,
                 flexWrap: "wrap",
-                marginTop: 6,
+                marginTop: 8,
                 marginLeft: 25,
               }}
             >
@@ -192,40 +166,43 @@ export default function PrivateRideDetails({
           </div>
         ))}
 
-        {/* Destination */}
-        <Row
+        <RideDetailRow
           icon={<MapPin size={15} />}
           color="#E74C3C"
-          label={dropoff.address}
-          sub={`Destination · Drop-off ${to12h(arrivalTime)}`}
+          headline="Destination"
+          value={dropoff.address}
+        />
+        <RideDetailRow
+          icon={<Clock size={15} />}
+          color="#E74C3C"
+          headline="Drop-off time"
+          value={to12h(arrivalTime)}
         />
       </div>
 
-      {/* Totals with hover breakdown */}
       <div
         style={{
           display: "flex",
-          gap: 24,
+          gap: 12,
           marginTop: 16,
           paddingTop: 14,
           borderTop: "1px solid #f4f6f8",
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <RouteIcon size={15} color="#0B1E3D" aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D" }}>
-            {distanceKm.toFixed(1)} km total
-          </span>
-          <InfoTooltip lines={segLines} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Clock size={15} color="#0B1E3D" aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D" }}>
-            {durationMinutes} min total
-          </span>
-          <InfoTooltip lines={segLines} />
-        </div>
+        <TripStatBlock
+          icon={<RouteIcon size={15} color="#0B1E3D" aria-hidden="true" />}
+          headline="Total distance"
+          value={`${distanceKm.toFixed(1)} km`}
+          lines={segLines}
+        />
+        <TripStatBlock
+          icon={<Clock size={15} color="#0B1E3D" aria-hidden="true" />}
+          headline="Total duration"
+          value={`${durationMinutes} min`}
+          lines={segLines}
+          accent="#F5A623"
+        />
       </div>
     </div>
   );
