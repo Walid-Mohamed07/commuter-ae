@@ -59,6 +59,8 @@ export async function PATCH(
     station: {
       id: station.objectId,
       name: station.name,
+      direction: station.direction,
+      stationType: station.stationType,
       lat: station.lat,
       lng: station.lng,
     },

@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
     const canonicalStations = stationDocs.map((station) => ({
       id: station.objectId,
       name: station.name || station.direction || "",
+      direction: station.direction,
+      stationType: station.stationType,
       lat: station.lat,
       lng: station.lng,
       popupInfo: [station.direction, station.landmark, station.stationType]
@@ -122,6 +124,8 @@ export async function POST(req: NextRequest) {
           startNearestStation: {
             id: startNearestStation.id,
             name: startNearestStation.name,
+            direction: startNearestStation.direction,
+            stationType: startNearestStation.stationType,
             lat: startNearestStation.lat,
             lng: startNearestStation.lng,
           },
@@ -130,6 +134,8 @@ export async function POST(req: NextRequest) {
           endNearestStation: {
             id: endNearestStation.id,
             name: endNearestStation.name,
+            direction: endNearestStation.direction,
+            stationType: endNearestStation.stationType,
             lat: endNearestStation.lat,
             lng: endNearestStation.lng,
           },

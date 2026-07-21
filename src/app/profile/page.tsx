@@ -46,6 +46,7 @@ export default async function ProfilePage() {
       initialName={profile.name}
       email={profile.email}
       initialPhone={profile.phone}
+      initialProfilePic={profile.profilePic}
       initialSavedAddresses={profile.savedAddresses}
     />
   );

@@ -1,11 +1,16 @@
 import { redirect, notFound } from "next/navigation";
-import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
+import { Car, MapPin, Route, CalendarDays } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { getUserTrip } from "@/lib/services/trips";
+import { getUserTrip, getDriverTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
 import AppHeader from "@/components/layout/AppHeader";
 import RouteMap from "@/components/shared/RouteMap";
+import DriverCard from "@/components/trips/DriverCard";
+import TripChat from "@/components/shared/TripChat";
+import PrivateRideDetails from "@/components/trips/PrivateRideDetails";
+import SharedRideDetails from "@/components/trips/SharedRideDetails";
+import RateTripModal from "@/components/trips/RateTripModal";
 import type { PaymentStatus, TripStatus } from "@/types/booking";
 
 export const metadata = { title: "Trip detail — Commuter" };
@@ -50,7 +55,7 @@ const STATUS_PILL: Record<
     color: "#E65100",
   },
   submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  matched: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
   active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
@@ -96,31 +101,39 @@ function Detail({
   value: string;
 }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-      <span style={{ marginTop: 1, flexShrink: 0 }}>{icon}</span>
-      <div>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#9aa7b4",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {label}
-        </p>
-        <p
-          style={{
-            margin: "2px 0 0",
-            fontSize: 14,
-            color: "#0B1E3D",
-            fontWeight: 600,
-          }}
-        >
-          {value}
-        </p>
+    <div
+      style={{
+        padding: "12px 14px",
+        borderRadius: 12,
+        background: "#f8f9fa",
+        border: "1px solid #eef0f3",
+      }}
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <span style={{ marginTop: 2, flexShrink: 0 }}>{icon}</span>
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              fontWeight: 800,
+              color: "#0B1E3D",
+              lineHeight: 1.25,
+            }}
+          >
+            {label}
+          </p>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#5A6A7A",
+            }}
+          >
+            {value}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -136,7 +149,11 @@ export default async function TripDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-trips/${id}`);
-  const trip = await getUserTrip(session.userId, id);
+
+  const isDriver = session.role === "driver";
+  const trip = isDriver
+    ? await getDriverTrip(session.userId, id)
+    : await getUserTrip(session.userId, id);
 
   if (!trip) notFound();
 
@@ -144,6 +161,7 @@ export default async function TripDetailPage({
     VEHICLES[trip.vehicleType as VehicleKey]?.label ?? trip.vehicleType;
   const paymentStatus = (trip.paymentStatus as PaymentStatus) ?? "pending";
   const status = (trip.status as TripStatus) ?? "pending_payment";
+  const isOngoing = status === "active" || status === "matched";
   const distinctPassengers = (trip.passengers ?? []).filter(
     (p) => !p.sameAsMain && p.pickup && p.dropoff,
   );
@@ -153,6 +171,7 @@ export default async function TripDetailPage({
       <AppHeader
         authed
         email={session.email}
+        role={isDriver ? "driver" : "passenger"}
         variant="app"
         backHref="/my-trips"
       />
@@ -200,6 +219,11 @@ export default async function TripDetailPage({
               {trip.priceEgp} EGP
             </span>
           </div>
+          {status === "completed" && !isDriver && (
+            <div style={{ marginTop: 12 }}>
+              <RateTripModal tripId={id} />
+            </div>
+          )}
         </div>
 
         {/* Route map */}
@@ -215,92 +239,25 @@ export default async function TripDetailPage({
           <RouteMap
             pickup={trip.pickup}
             dropoff={trip.dropoff}
+            stops={trip.stops?.map((s) => s.point)}
+            stations={
+              trip.rideType === "shared"
+                ? [trip.pickupStation, trip.dropoffStation].filter(
+                    (s): s is NonNullable<typeof s> => Boolean(s),
+                  )
+                : undefined
+            }
             height={220}
             interactive
           />
 
           <div style={{ padding: "16px 18px" }}>
-            {/* Pickup / dropoff */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
-              <div style={{ display: "flex", gap: 10 }}>
-                <MapPin
-                  size={15}
-                  color="#00C2A8"
-                  style={{ marginTop: 2, flexShrink: 0 }}
-                  aria-hidden="true"
-                />
-                <div>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#9aa7b4",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Pickup
-                  </p>
-                  <p
-                    style={{
-                      margin: "2px 0 0",
-                      fontSize: 14,
-                      color: "#0B1E3D",
-                    }}
-                  >
-                    {trip.pickup?.address ?? "—"}
-                  </p>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <MapPin
-                  size={15}
-                  color="#E74C3C"
-                  style={{ marginTop: 2, flexShrink: 0 }}
-                  aria-hidden="true"
-                />
-                <div>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#9aa7b4",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Dropoff
-                  </p>
-                  <p
-                    style={{
-                      margin: "2px 0 0",
-                      fontSize: 14,
-                      color: "#0B1E3D",
-                    }}
-                  >
-                    {trip.dropoff?.address ?? "—"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Detail grid */}
+            {/* Quick summary chips */}
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: 12,
-                borderTop: "1px solid #f4f6f8",
-                paddingTop: 14,
               }}
             >
               <Detail
@@ -313,51 +270,61 @@ export default async function TripDetailPage({
                 label="Vehicle"
                 value={vLabel}
               />
-              <Detail
-                icon={<Users size={15} color="#0B1E3D" />}
-                label="Extra passengers"
-                value={String(trip.extraPassengers)}
-              />
-              <Detail
-                icon={<Clock size={15} color="#0B1E3D" />}
-                label="Pickup time"
-                value={to12h(trip.pickupTime)}
-              />
-              <Detail
-                icon={<Clock size={15} color="#0B1E3D" />}
-                label="Arrival time"
-                value={to12h(trip.arrivalTime)}
-              />
-              <Detail
-                icon={<Route size={15} color="#0B1E3D" />}
-                label="Distance"
-                value={`${trip.distanceKm.toFixed(1)} km`}
-              />
-              <Detail
-                icon={<Clock size={15} color="#0B1E3D" />}
-                label="Drive time"
-                value={`${trip.durationMinutes} min`}
-              />
-              {trip.rideType === "shared" && trip.pickupStation && (
-                <Detail
-                  icon={<MapPin size={15} color="#00C2A8" />}
-                  label="Pickup station"
-                  value={`${trip.pickupStation.name} · ${trip.walkingMinToStation ?? 0} min walk`}
-                />
-              )}
-              {trip.rideType === "shared" && trip.dropoffStation && (
-                <Detail
-                  icon={<MapPin size={15} color="#E74C3C" />}
-                  label="Dropoff station"
-                  value={`${trip.dropoffStation.name} · ${trip.walkingMinFromStation ?? 0} min walk`}
-                />
-              )}
             </div>
           </div>
         </div>
 
-        {/* Distinct passenger points (private rides) */}
-        {distinctPassengers.length > 0 && (
+        {/* Private ride: origin, stops, destination, distance/time breakdown */}
+        {trip.rideType === "private" && (
+          <PrivateRideDetails
+            pickup={trip.pickup}
+            dropoff={trip.dropoff}
+            pickupTime={trip.pickupTime}
+            arrivalTime={trip.arrivalTime}
+            numberOfPassengers={trip.numberOfPassengers}
+            stops={trip.stops ?? []}
+            distanceKm={trip.distanceKm}
+            durationMinutes={trip.durationMinutes}
+            to12h={to12h}
+          />
+        )}
+
+        {/* Shared ride: origin/station, destination/station, distance/time breakdown */}
+        {trip.rideType === "shared" && (
+          <SharedRideDetails
+            pickup={trip.pickup}
+            dropoff={trip.dropoff}
+            pickupTime={trip.pickupTime}
+            arrivalTime={trip.arrivalTime}
+            extraPassengers={trip.extraPassengers}
+            pickupStation={trip.pickupStation}
+            dropoffStation={trip.dropoffStation}
+            pickupStationOptions={trip.pickupStationOptions}
+            dropoffStationOptions={trip.dropoffStationOptions}
+            walkingMinToStation={trip.walkingMinToStation}
+            walkingMinFromStation={trip.walkingMinFromStation}
+            distanceKm={trip.distanceKm}
+            durationMinutes={trip.durationMinutes}
+            to12h={to12h}
+          />
+        )}
+
+        {/* Ongoing trip: driver card + chat (passenger) / chat only (driver) */}
+        {isOngoing && (
+          <>
+            {!isDriver && (
+              <DriverCard
+                driver={trip.assignedDriver ?? { name: "", phone: "", profilePic: null, carBrand: "", carModel: "", modelYear: "", plate: "" }}
+              />
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <TripChat tripId={id} role={isDriver ? "driver" : "user"} />
+            </div>
+          </>
+        )}
+
+        {/* Distinct passenger points (shared rides only — private covered above) */}
+        {trip.rideType === "shared" && distinctPassengers.length > 0 && (
           <div
             style={{
               background: "#fff",
