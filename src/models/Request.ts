@@ -30,7 +30,7 @@ const RequestSchema = new Schema(
       enum: [
         "pending_payment",
         "submitted",
-        "matching",
+        "matched",
         "confirmed",
         "active",
         "completed",

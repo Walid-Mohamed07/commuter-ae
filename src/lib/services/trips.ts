@@ -3,6 +3,8 @@ import { Types } from "mongoose";
 import { connectDB } from "@/lib/db/mongoose";
 import { Trip } from "@/models/Trip";
 import { Request as RequestModel } from "@/models/Request";
+import { User } from "@/models/User";
+import { Driver } from "@/models/Driver";
 import type {
   BookingStatus,
   PaymentStatus,
@@ -15,10 +17,76 @@ export interface StationOption extends StationSelection {
   walkingMin: number;
 }
 
+export interface AssignedDriver {
+  name?: string;
+  phone?: string;
+  profilePic?: string;
+  carBrand?: string;
+  carModel?: string;
+  modelYear?: string;
+  plate?: string;
+}
+
+/**
+ * Fetch assignedDriver data from User and Driver documents using driverId.
+ * Combines user info (name, phone) with driver info (car details, documents).
+ */
+export async function buildAssignedDriver(
+  driverId: unknown,
+): Promise<AssignedDriver | null> {
+  if (!driverId || !Types.ObjectId.isValid(String(driverId))) return null;
+
+  const [user, driver] = await Promise.all([
+    User.findById(driverId)
+      .select("name phone")
+      .lean<{ name?: string; phone?: string }>(),
+    Driver.findOne({ userId: driverId })
+      .select(
+        "carBrand carModel modelYear plateChar1 plateChar2 plateChar3 plateDigits documents",
+      )
+      .lean<{
+        carBrand?: string;
+        carModel?: string;
+        modelYear?: number;
+        plateChar1?: string;
+        plateChar2?: string;
+        plateChar3?: string;
+        plateDigits?: string;
+        documents?: { profilePic?: string };
+      }>(),
+  ]);
+
+  if (!user) return null;
+
+  const plate =
+    driver &&
+    driver.plateChar1 &&
+    driver.plateChar2 &&
+    driver.plateChar3 &&
+    driver.plateDigits
+      ? `${driver.plateChar1} ${driver.plateChar2} ${driver.plateChar3} ${driver.plateDigits}`
+      : undefined;
+
+  return {
+    name: user.name,
+    phone: user.phone,
+    profilePic: driver?.documents?.profilePic,
+    carBrand: driver?.carBrand,
+    carModel: driver?.carModel,
+    modelYear: driver?.modelYear ? String(driver.modelYear) : undefined,
+    plate,
+  };
+}
+
+export interface StationOption extends StationSelection {
+  distanceKm: number;
+  walkingMin: number;
+}
+
 const STATUS_GROUPS: Record<string, BookingStatus[]> = {
   pending_payment: ["pending_payment"],
   upcoming: ["submitted", "confirmed"],
-  ongoing: ["active", "matching"],
+  ongoing: ["active", "matched"],
   previous: ["completed", "cancelled", "time_out"],
 };
 
@@ -176,6 +244,7 @@ export async function listUserTrips(
           _id: unknown;
           tripNumber: number;
           requestId: unknown;
+          driverId?: unknown;
           date: string;
           paymentStatus: string;
           status: string;
@@ -275,6 +344,7 @@ export interface UserTripDetail {
   paymentStatus: PaymentStatus;
   status: string;
   createdAt: string;
+  assignedDriver?: AssignedDriver | null;
 }
 
 export async function getDriverTrip(
@@ -291,6 +361,7 @@ export async function getDriverTrip(
     _id: unknown;
     tripNumber: number;
     requestId: unknown;
+    driverId?: unknown;
     date: string;
     cycleIndex: number;
     pickup: GeoPoint;
@@ -328,6 +399,10 @@ export async function getDriverTrip(
 
   if (!trip) return null;
 
+  const assignedDriver = trip.driverId
+    ? await buildAssignedDriver(trip.driverId)
+    : null;
+
   return {
     ...trip,
     id: String(trip._id),
@@ -339,6 +414,7 @@ export async function getDriverTrip(
       trip.createdAt instanceof Date
         ? trip.createdAt.toISOString()
         : String(trip.createdAt),
+    assignedDriver,
   };
 }
 
@@ -356,6 +432,7 @@ export async function getUserTrip(
     _id: unknown;
     tripNumber: number;
     requestId: unknown;
+    driverId?: unknown;
     date: string;
     cycleIndex: number;
     pickup: GeoPoint;
@@ -393,6 +470,10 @@ export async function getUserTrip(
 
   if (!trip) return null;
 
+  const assignedDriver = trip.driverId
+    ? await buildAssignedDriver(trip.driverId)
+    : null;
+
   return {
     ...trip,
     id: String(trip._id),
@@ -404,5 +485,6 @@ export async function getUserTrip(
       trip.createdAt instanceof Date
         ? trip.createdAt.toISOString()
         : String(trip.createdAt),
+    assignedDriver,
   };
 }

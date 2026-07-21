@@ -50,6 +50,19 @@ const StopSchema = new Schema(
   { _id: false },
 );
 
+const AssignedDriverSchema = new Schema(
+  {
+    name: { type: String, required: false },
+    phone: { type: String, required: false },
+    profilePic: { type: String, required: false },
+    carBrand: { type: String, required: false },
+    carModel: { type: String, required: false },
+    modelYear: { type: String, required: false },
+    plate: { type: String, required: false },
+  },
+  { _id: false },
+);
+
 const TripSchema = new Schema(
   {
     tripNumber: {
@@ -66,7 +79,17 @@ const TripSchema = new Schema(
       index: true,
     },
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
-    driverId: { type: Types.ObjectId, ref: "User", required: false, index: true },
+    driverId: {
+      type: Types.ObjectId,
+      ref: "User",
+      required: false,
+      index: true,
+    },
+    assignedDriver: {
+      type: AssignedDriverSchema,
+      required: false,
+      default: null,
+    },
     date: { type: String, required: true, index: true },
     cycleIndex: { type: Number, required: true, min: 0 },
     pickup: { type: PointSchema, required: true },
@@ -111,7 +134,7 @@ const TripSchema = new Schema(
       enum: [
         "pending_payment",
         "submitted",
-        "matching",
+        "matched",
         "confirmed",
         "active",
         "completed",

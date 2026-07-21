@@ -56,7 +56,7 @@ const STATUS_PILL: Record<
     color: "#E65100",
   },
   submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  matched: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
   active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
@@ -162,7 +162,7 @@ export default async function TripDetailPage({
     VEHICLES[trip.vehicleType as VehicleKey]?.label ?? trip.vehicleType;
   const paymentStatus = (trip.paymentStatus as PaymentStatus) ?? "pending";
   const status = (trip.status as TripStatus) ?? "pending_payment";
-  const isOngoing = status === "active" || status === "matching";
+  const isOngoing = status === "active" || status === "matched";
   const distinctPassengers = (trip.passengers ?? []).filter(
     (p) => !p.sameAsMain && p.pickup && p.dropoff,
   );

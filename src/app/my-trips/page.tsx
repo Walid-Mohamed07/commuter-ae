@@ -59,7 +59,7 @@ const STATUS_PILL: Record<
     color: "#E65100",
   },
   submitted: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
-  matching: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
+  matched: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   confirmed: { label: "Upcoming", bg: "#E2E8F0", color: "#5A6A7A" },
   active: { label: "Ongoing", bg: "#00C2A8", color: "#fff" },
   completed: { label: "Previous", bg: "#0B1E3D", color: "#fff" },
@@ -207,7 +207,13 @@ export default async function MyTripsPage({
         {trips.length === 0 ? (
           <EmptyState
             icon={isDriver ? "🚗" : "🧾"}
-            title={hasFilters ? "Nothing here" : isDriver ? "No assigned trips yet" : "No trips yet"}
+            title={
+              hasFilters
+                ? "Nothing here"
+                : isDriver
+                  ? "No assigned trips yet"
+                  : "No trips yet"
+            }
             description={
               hasFilters
                 ? "Try clearing the filters to see your full history."
@@ -275,7 +281,7 @@ export default async function MyTripsPage({
                       trip.vehicleType;
                     const timedOut = trip.status === "time_out";
                     const isOngoing =
-                      trip.status === "active" || trip.status === "matching";
+                      trip.status === "active" || trip.status === "matched";
                     const needsPayment =
                       trip.paymentStatus === "pending" ||
                       trip.paymentStatus === "failed";
