@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { Car, MapPin, Clock, Route, Users, CalendarDays } from "lucide-react";
+import { Car, MapPin, Route, CalendarDays } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getUserTrip, getDriverTrip } from "@/lib/services/trips";
 import { VEHICLES } from "@/lib/config/vehicles";
@@ -11,7 +11,6 @@ import TripChat from "@/components/shared/TripChat";
 import PrivateRideDetails from "@/components/trips/PrivateRideDetails";
 import SharedRideDetails from "@/components/trips/SharedRideDetails";
 import RateTripModal from "@/components/trips/RateTripModal";
-import { PLACEHOLDER_DRIVER } from "@/lib/config/driverPlaceholder";
 import type { PaymentStatus, TripStatus } from "@/types/booking";
 
 export const metadata = { title: "Trip detail — Commuter" };
@@ -313,7 +312,11 @@ export default async function TripDetailPage({
         {/* Ongoing trip: driver card + chat (passenger) / chat only (driver) */}
         {isOngoing && (
           <>
-            {!isDriver && <DriverCard driver={PLACEHOLDER_DRIVER} />}
+            {!isDriver && (
+              <DriverCard
+                driver={trip.assignedDriver ?? { name: "", phone: "", profilePic: null, carBrand: "", carModel: "", modelYear: "", plate: "" }}
+              />
+            )}
             <div style={{ marginBottom: 16 }}>
               <TripChat tripId={id} role={isDriver ? "driver" : "user"} />
             </div>

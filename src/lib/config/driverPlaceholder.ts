@@ -13,11 +13,11 @@ export interface PlaceholderDriver {
 }
 
 export const PLACEHOLDER_DRIVER: PlaceholderDriver = {
-  name: "Ahmed Hassan",
-  phone: "+201001234567",
+  name: "",
+  phone: "",
   profilePic: null,
-  carBrand: "Chevrolet",
-  carModel: "Optra",
-  modelYear: 2017,
-  plate: "\u0623 \u0628 \u062C 1234",
+  carBrand: "",
+  carModel: "",
+  modelYear: 0,
+  plate: "",
 };

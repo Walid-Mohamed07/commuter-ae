@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import Section from "@/components/shared/Section";
+import ChangePasswordSection from "@/components/shared/ChangePasswordSection";
 import SavedAddressesSection from "@/components/shared/SavedAddressesSection";
 import { CAR_TYPE_LIST, type CarType } from "@/lib/config/driver";
 import type { SavedAddress } from "@/types/shared";
@@ -1038,6 +1039,10 @@ export default function DriverProfileClient({
             </button>
           </div>
         )}
+
+        <Section title="Security">
+          <ChangePasswordSection />
+        </Section>
 
         <SavedAddressesSection initialAddresses={initialSavedAddresses} />
       </main>

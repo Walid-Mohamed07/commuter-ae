@@ -13,7 +13,6 @@ import { listUserTrips, listDriverTrips } from "@/lib/services/trips";
 import { getOrCreateWallet } from "@/lib/wallet/wallet";
 import { VEHICLES } from "@/lib/config/vehicles";
 import type { VehicleKey } from "@/lib/config/vehicles";
-import { PLACEHOLDER_DRIVER } from "@/lib/config/driverPlaceholder";
 import AppHeader from "@/components/layout/AppHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import StatusGroupFilter from "@/components/shared/StatusGroupFilter";
@@ -409,29 +408,44 @@ export default async function MyTripsPage({
                                     padding: "12px 14px",
                                   }}
                                 >
-                                  <div
-                                    style={{
-                                      width: 40,
-                                      height: 40,
-                                      borderRadius: "50%",
-                                      flexShrink: 0,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      background: "#0B1E3D",
-                                      color: "#fff",
-                                      fontWeight: 800,
-                                      fontSize: 15,
-                                    }}
-                                    aria-hidden="true"
-                                  >
-                                    {PLACEHOLDER_DRIVER.name
-                                      .split(" ")
-                                      .filter(Boolean)
-                                      .slice(0, 2)
-                                      .map((p) => p[0]?.toUpperCase())
-                                      .join("")}
-                                  </div>
+                                  {trip.assignedDriver?.profilePic ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={trip.assignedDriver.profilePic}
+                                      alt={trip.assignedDriver?.name ?? "Driver"}
+                                      style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: "50%",
+                                        objectFit: "cover",
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: "50%",
+                                        flexShrink: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        background: "#0B1E3D",
+                                        color: "#fff",
+                                        fontWeight: 800,
+                                        fontSize: 15,
+                                      }}
+                                      aria-hidden="true"
+                                    >
+                                      {(trip.assignedDriver?.name ?? "")
+                                        .split(" ")
+                                        .filter(Boolean)
+                                        .slice(0, 2)
+                                        .map((p) => p[0]?.toUpperCase())
+                                        .join("")}
+                                    </div>
+                                  )}
                                   <div style={{ minWidth: 0, flex: 1 }}>
                                     <p
                                       style={{
@@ -453,7 +467,7 @@ export default async function MyTripsPage({
                                         color: "#0B1E3D",
                                       }}
                                     >
-                                      {PLACEHOLDER_DRIVER.name}
+                                      {trip.assignedDriver?.name ?? "—"}
                                     </p>
                                   </div>
                                 </div>
@@ -482,9 +496,10 @@ export default async function MyTripsPage({
                                       color: "#0B1E3D",
                                     }}
                                   >
-                                    {PLACEHOLDER_DRIVER.carBrand}{" "}
-                                    {PLACEHOLDER_DRIVER.carModel}{" "}
-                                    {PLACEHOLDER_DRIVER.modelYear}
+                                    {(trip.assignedDriver?.carBrand ?? "")}
+                                    {trip.assignedDriver?.carBrand && trip.assignedDriver?.carModel ? " " : ""}
+                                    {(trip.assignedDriver?.carModel ?? "")}
+                                    {trip.assignedDriver?.modelYear ? ` · ${trip.assignedDriver.modelYear}` : ""}
                                   </span>
                                   <span
                                     style={{
@@ -503,7 +518,7 @@ export default async function MyTripsPage({
                                       whiteSpace: "nowrap",
                                     }}
                                   >
-                                    {PLACEHOLDER_DRIVER.plate}
+                                    {trip.assignedDriver?.plate ?? "—"}
                                   </span>
                                 </div>
                               </div>
