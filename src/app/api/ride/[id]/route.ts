@@ -3,13 +3,10 @@ import {
   getRideById,
   updateRideStatus,
   cancelRide,
-} from "@/services/ride.service";
+} from "@/lib/services/rideService";
 
 // GET /api/rides/:id
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(_req: NextRequest, { params }: { params: any }) {
   try {
     const ride = await getRideById(params.id);
     if (!ride) {
@@ -25,10 +22,7 @@ export async function GET(
 }
 
 // PATCH /api/rides/:id — update ride status (confirmed/active/completed)
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(req: NextRequest, { params }: { params: any }) {
   try {
     const { status } = await req.json();
     if (!status) {
@@ -51,10 +45,7 @@ export async function PATCH(
 }
 
 // DELETE /api/rides/:id — cancel (never hard delete)
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(req: NextRequest, { params }: { params: any }) {
   try {
     const { reason } = await req.json().catch(() => ({ reason: undefined }));
     const ride = await cancelRide(params.id, reason);

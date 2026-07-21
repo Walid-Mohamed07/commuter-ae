@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRide, getRidesByDriver } from "@/services/ride.service";
+import { createRide, getRidesByDriver } from "@/lib/services/rideService";
 
 // POST /api/rides — create a ride from a match result
 export async function POST(req: NextRequest) {

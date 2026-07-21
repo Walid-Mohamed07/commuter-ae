@@ -56,7 +56,6 @@ async function createRide(matchResult: MatchResult) {
     const rideDoc = new Ride({
       rideNumber,
       availabilityId: matchResult.availabilityId,
-      availabilityId: matchResult.availabilityId,
       driverId: matchResult.driverId,
       date: matchResult.date,
       vehicleType: matchResult.vehicleType,
@@ -107,6 +106,16 @@ async function createRide(matchResult: MatchResult) {
     session.endSession();
     throw err;
   }
+}
+
+async function getNextSequence(name: string, session: mongoose.ClientSession) {
+  const coll: any = mongoose.connection.collection("counters");
+  const res: any = await coll.findOneAndUpdate(
+    { _id: name },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true, session },
+  );
+  return (res.value && (res.value.seq as number)) || 1;
 }
 
 function recalculateRouteFromPassengers(passengers: any[]) {

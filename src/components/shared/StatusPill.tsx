@@ -11,11 +11,7 @@ const STATUS_CONFIG: Record<
     bg: "#FFF3E0",
     color: "#E65100",
   },
-  matched: {
-    label: "Matched",
-    bg: "#EFF7F6",
-    color: "#00C2A8",
-  },
+ 
   driver_offered: {
     label: "Driver offered",
     bg: "#FFF3E0",

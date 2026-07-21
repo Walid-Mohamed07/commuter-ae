@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   updatePassengerStatusInRide,
   removePassengerFromRide,
-} from "@/services/ride.service";
+} from "@/lib/services/rideService";
 
 // PATCH /api/rides/:id/passengers/:tripId — update one passenger's status
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; tripId: string } },
+  { params }: { params: any },
 ) {
   try {
     const { status } = await req.json();
@@ -40,7 +40,7 @@ export async function PATCH(
 // DELETE /api/rides/:id/passengers/:tripId — remove a passenger from the ride
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string; tripId: string } },
+  { params }: { params: any },
 ) {
   try {
     const { reason } = await req.json().catch(() => ({ reason: undefined }));
