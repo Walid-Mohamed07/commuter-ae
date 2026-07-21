@@ -21,6 +21,7 @@ const STATUS_CONFIG: Record<
     bg: "#FFF8E1",
     color: "#F57F17",
   },
+  matched: { label: "Matched", bg: "#EFF7F6", color: "#00C2A8" },
   confirmed: { label: "Confirmed", bg: "#E8F5E9", color: "#27AE60" },
   active: { label: "● Active", bg: "#00C2A8", color: "#fff", dot: true },
   completed: { label: "Completed", bg: "#0B1E3D", color: "#fff" },

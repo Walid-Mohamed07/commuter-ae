@@ -1,6 +1,6 @@
 import { Schema, model, models, Types, type InferSchemaType } from "mongoose";
 
-const PointSchema = new Schema(
+export const PointSchema = new Schema(
   {
     address: { type: String, required: true },
     lat: { type: Number, required: true },
@@ -18,7 +18,7 @@ const PassengerDetailSchema = new Schema(
   { _id: false },
 );
 
-const StationSchema = new Schema(
+export const StationSchema = new Schema(
   {
     id: { type: Number, required: true },
     lat: { type: Number, required: true },
@@ -40,7 +40,7 @@ const StationOptionSchema = new Schema(
   { _id: false },
 );
 
-const StopSchema = new Schema(
+export const StopSchema = new Schema(
   {
     point: { type: PointSchema, required: true },
     alighting: { type: Number, required: true, min: 0 },
@@ -141,6 +141,13 @@ const TripSchema = new Schema(
         "cancelled",
         "time_out",
       ],
+    },
+    rideId: {
+      type: Types.ObjectId,
+      ref: "Ride",
+      required: false,
+      index: true,
+      default: null,
     },
   },
   { timestamps: true, collection: "trips" },

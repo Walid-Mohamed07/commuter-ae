@@ -1,7 +1,7 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
-import type Transporter from "nodemailer/lib/mailer";
+type Transporter = any;
 import { SUPPORT_EMAIL } from "@/lib/config/site";
 
 interface ContactPayload {
