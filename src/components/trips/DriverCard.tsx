@@ -1,8 +1,18 @@
 import { Phone, Car } from "lucide-react";
-import type { PlaceholderDriver } from "@/lib/config/driverPlaceholder";
 
-function initials(name: string): string {
-  return name
+interface DriverCardData {
+  name?: string;
+  phone?: string;
+  profilePic?: string | null;
+  carBrand?: string;
+  carModel?: string;
+  modelYear?: string;
+  plate?: string;
+}
+
+function initials(name?: string): string {
+  const source = name?.trim() ?? "";
+  return source
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
@@ -10,7 +20,7 @@ function initials(name: string): string {
     .join("");
 }
 
-export default function DriverCard({ driver }: { driver: PlaceholderDriver }) {
+export default function DriverCard({ driver }: { driver: DriverCardData }) {
   return (
     <div
       style={{
@@ -65,7 +75,7 @@ export default function DriverCard({ driver }: { driver: PlaceholderDriver }) {
             }}
             aria-hidden="true"
           >
-            {initials(driver.name)}
+            {initials(driver.name) || "D"}
           </div>
         )}
 
@@ -78,10 +88,10 @@ export default function DriverCard({ driver }: { driver: PlaceholderDriver }) {
               color: "#0B1E3D",
             }}
           >
-            {driver.name}
+            {driver.name ?? "Driver"}
           </p>
           <p style={{ margin: "2px 0 0", fontSize: 13, color: "#5A6A7A" }}>
-            {driver.phone}
+            {driver.phone ?? "No phone on file"}
           </p>
         </div>
 
@@ -121,7 +131,8 @@ export default function DriverCard({ driver }: { driver: PlaceholderDriver }) {
         <Car size={18} color="#0B1E3D" style={{ flexShrink: 0 }} aria-hidden="true" />
         <div style={{ minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0B1E3D" }}>
-            {driver.carBrand} {driver.carModel} · {driver.modelYear}
+            {(driver.carBrand ?? "") + (driver.carBrand && driver.carModel ? " " : "") + (driver.carModel ?? "") || "Vehicle details pending"}
+            {driver.modelYear ? ` · ${driver.modelYear}` : ""}
           </p>
           <p
             style={{
@@ -132,7 +143,7 @@ export default function DriverCard({ driver }: { driver: PlaceholderDriver }) {
               fontWeight: 600,
             }}
           >
-            {driver.plate}
+            {driver.plate ?? "Plate pending"}
           </p>
         </div>
       </div>

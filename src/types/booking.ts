@@ -44,6 +44,15 @@ export interface TripListRow {
   durationMinutes: number;
   bookingAmountEgp: number;
   createdAt: string;
+  assignedDriver?: {
+    name?: string;
+    phone?: string;
+    profilePic?: string;
+    carBrand?: string;
+    carModel?: string;
+    modelYear?: string;
+    plate?: string;
+  } | null;
 }
 
 /** Trip summary nested inside a booking card (/my-requests). */

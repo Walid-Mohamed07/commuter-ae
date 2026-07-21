@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Phone, Mail, Check, Loader2, Camera } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
+import ChangePasswordSection from "@/components/shared/ChangePasswordSection";
 import SavedAddressesSection from "@/components/shared/SavedAddressesSection";
 import type { SavedAddress } from "@/types/shared";
 
@@ -538,6 +539,10 @@ export default function ProfileClient({
           >
             Book a ride →
           </Link>
+        </div>
+
+        <div style={{ marginTop: 20 }}>
+          <ChangePasswordSection />
         </div>
 
         <SavedAddressesSection initialAddresses={initialSavedAddresses} />
