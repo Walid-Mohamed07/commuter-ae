@@ -149,6 +149,7 @@ export default async function TripDetailPage({
   const session = await getSession();
   const { id } = await params;
   if (!session) redirect(`/login?redirect=/my-trips/${id}`);
+  if (session.role === "admin") redirect("/admin/dashboard");
 
   const isDriver = session.role === "driver";
   const trip = isDriver

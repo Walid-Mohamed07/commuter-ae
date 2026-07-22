@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Route, Trash2, UserPlus, X, MapPin, Inbox } from "lucide-react";
+import AdminLogoutButton from "@/components/admin/AdminLogoutButton";
 
 interface DriverOption {
   _id: string;
@@ -49,6 +50,9 @@ export default function AdminTripsPage() {
   const [error, setError] = useState<string | null>(null);
   const [modalTripId, setModalTripId] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driversError, setDriversError] = useState<string | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
 
   async function loadTrips() {
     try {
@@ -63,21 +67,34 @@ export default function AdminTripsPage() {
     }
   }
 
+  function closeModal() {
+    setModalTripId(null);
+    setDrivers([]);
+    setDriversError(null);
+    setAssigningId(null);
+  }
+
   async function openAssignModal(tripId: string) {
     setModalTripId(tripId);
     setDrivers([]);
+    setDriversError(null);
+    setDriversLoading(true);
     try {
       const res = await fetch(`/api/admin/trips/${tripId}/available-drivers`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load drivers");
       setDrivers(data.drivers ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load drivers");
+      setDriversError(err instanceof Error ? err.message : "Failed to load drivers");
+    } finally {
+      setDriversLoading(false);
     }
   }
 
   async function assignDriver(driverId: string) {
     if (!modalTripId) return;
+    setAssigningId(driverId);
+    setDriversError(null);
     try {
       const res = await fetch(`/api/admin/trips/${modalTripId}/assign`, {
         method: "PATCH",
@@ -86,10 +103,11 @@ export default function AdminTripsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to assign driver");
-      setModalTripId(null);
+      closeModal();
       await loadTrips();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to assign driver");
+      setDriversError(err instanceof Error ? err.message : "Failed to assign driver");
+      setAssigningId(null);
     }
   }
 
@@ -105,6 +123,15 @@ export default function AdminTripsPage() {
       setError(err instanceof Error ? err.message : "Failed to delete trip");
     }
   }
+
+  useEffect(() => {
+    if (!modalTripId) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeModal();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [modalTripId]);
 
   useEffect(() => {
     let active = true;
@@ -267,6 +294,56 @@ export default function AdminTripsPage() {
         @media (prefers-reduced-motion: reduce) {
           .skeleton-bar { animation: none; }
         }
+
+        .modal-overlay {
+          position: fixed; inset: 0;
+          background: rgba(11,30,61,0.55);
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+          z-index: 1200;
+          animation: fadeIn 0.15s ease;
+        }
+        .modal-panel {
+          width: 100%; max-width: 460px;
+          background: #ffffff;
+          border-radius: 18px;
+          padding: 24px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+          animation: panelIn 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+          max-height: 84vh;
+          display: flex;
+          flex-direction: column;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes panelIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @media (prefers-reduced-motion: reduce) {
+          .modal-overlay, .modal-panel { animation: none; }
+        }
+
+        .driver-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 2px; }
+        .driver-row {
+          display: flex; align-items: center; justify-content: space-between;
+          border: 1px solid #E6EAEC; border-radius: 12px; padding: 11px 13px;
+          background: #F6F8F7; cursor: pointer; text-align: left; width: 100%;
+          transition: border-color 0.12s ease, background 0.12s ease;
+        }
+        .driver-row:hover:not(:disabled) { border-color: #00C2A8; background: rgba(0,194,168,0.05); }
+        .driver-row:disabled { cursor: default; opacity: 0.6; }
+        .avail-chip {
+          font-size: 11px; font-weight: 600;
+          color: #5A6A7A; background: #EEF2F5;
+          padding: 3px 8px; border-radius: 999px;
+          margin-top: 3px; display: inline-block;
+        }
+        .spinner {
+          width: 14px; height: 14px;
+          border: 2px solid rgba(0,194,168,0.25);
+          border-top-color: #00877A;
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .modal-skel { display: flex; align-items: center; gap: 10px; padding: 11px 13px; }
       `}</style>
 
       <div style={{ maxWidth: 1240, margin: "0 auto" }}>
@@ -282,12 +359,15 @@ export default function AdminTripsPage() {
               {loading ? "Loading the board…" : `${trips.length} trip${trips.length === 1 ? "" : "s"} on the board`}
             </p>
           </div>
-          <a
-            href="/admin/dashboard"
-            style={{ textDecoration: "none", padding: "11px 18px", borderRadius: 10, color: "#0B1E3D", fontWeight: 600, fontSize: 14, background: "#ffffff", border: "1px solid #E6EAEC" }}
-          >
-            Back to dashboard
-          </a>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <a
+              href="/admin/dashboard"
+              style={{ textDecoration: "none", padding: "11px 18px", borderRadius: 10, color: "#0B1E3D", fontWeight: 600, fontSize: 14, background: "#ffffff", border: "1px solid #E6EAEC" }}
+            >
+              Back to dashboard
+            </a>
+            <AdminLogoutButton />
+          </div>
         </div>
 
         {error ? (
@@ -411,37 +491,89 @@ export default function AdminTripsPage() {
       </div>
 
       {modalTripId ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(11,30,61,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 1200 }}>
-          <div style={{ width: "100%", maxWidth: 440, background: "#ffffff", borderRadius: 18, padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h3 className="trips-board display" style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#0B1E3D" }}>Assign driver</h3>
-              <button type="button" onClick={() => setModalTripId(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#5A6A7A" }}>
+        <div
+          className="trips-board modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <div className="modal-panel" role="dialog" aria-modal="true" aria-label="Assign driver">
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+              <div>
+                <h3 className="display" style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#0B1E3D" }}>Assign driver</h3>
+                {(() => {
+                  const trip = trips.find((t) => t._id === modalTripId);
+                  return trip ? (
+                    <p style={{ margin: "3px 0 0", fontSize: 13, color: "#5A6A7A" }}>
+                      {trip.tripNumber != null ? `#${String(trip.tripNumber).padStart(3, "0")}` : ""} · {trip.date} · {trip.pickupTime}
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+              <button type="button" onClick={closeModal} aria-label="Close" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#5A6A7A", padding: 4, flexShrink: 0 }}>
                 <X size={18} />
               </button>
             </div>
-            {drivers.length === 0 ? (
-              <p style={{ color: "#5A6A7A", fontSize: 14 }}>No drivers are available for this trip's date.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {drivers.map((driver, index) => (
-                  <button
-                    key={driver._id ? `${driver._id}-${index}` : `driver-${index}`}
-                    type="button"
-                    onClick={() => void assignDriver(String(driver._id))}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #E6EAEC", borderRadius: 12, padding: "12px 14px", background: "#F6F8F7", cursor: "pointer", textAlign: "left" }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 30, height: 30, borderRadius: "50%", background: "#0B1E3D", color: "#fff", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {initials(driver.name)}
-                      </span>
-                      <span>
-                        <strong style={{ color: "#0B1E3D", fontSize: 14 }}>{driver.name ?? "Driver"}</strong>
-                        <div style={{ color: "#5A6A7A", fontSize: 12.5 }}>{driver.phone ?? "No phone on file"}</div>
-                      </span>
-                    </span>
-                    <span style={{ color: "#00877A", fontWeight: 700, fontSize: 13 }}>Assign</span>
-                  </button>
+
+            <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#5A6A7A" }}>
+              Showing drivers available for this trip's date and time.
+            </p>
+
+            {driversError ? (
+              <p role="alert" style={{ margin: "0 0 14px", padding: "10px 12px", borderRadius: 10, background: "rgba(225,82,82,0.08)", color: "#C13E3E", border: "1px solid rgba(225,82,82,0.2)", fontSize: 13 }}>
+                {driversError}
+              </p>
+            ) : null}
+
+            {driversLoading ? (
+              <div className="driver-list">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={`driver-skel-${i}`} className="modal-skel">
+                    <div className="skeleton-bar" style={{ width: 30, height: 30, borderRadius: "50%" }} />
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div className="skeleton-bar" style={{ width: "50%" }} />
+                      <div className="skeleton-bar" style={{ width: "30%", height: 9 }} />
+                    </div>
+                  </div>
                 ))}
+              </div>
+            ) : drivers.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "24px 8px", textAlign: "center" }}>
+                <MapPin size={22} style={{ color: "#C7D0D4" }} />
+                <p style={{ margin: 0, fontSize: 14, color: "#5A6A7A" }}>No drivers are available for this trip's date.</p>
+              </div>
+            ) : (
+              <div className="driver-list">
+                {drivers.map((driver, index) => {
+                  const id = String(driver._id);
+                  const isAssigning = assigningId === id;
+                  return (
+                    <button
+                      key={driver._id ? `${driver._id}-${index}` : `driver-${index}`}
+                      type="button"
+                      disabled={assigningId !== null}
+                      onClick={() => void assignDriver(id)}
+                      className="driver-row"
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <span style={{ width: 30, height: 30, borderRadius: "50%", background: "#0B1E3D", color: "#fff", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {initials(driver.name)}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <strong style={{ color: "#0B1E3D", fontSize: 14, display: "block" }}>{driver.name ?? "Driver"}</strong>
+                          <span style={{ color: "#5A6A7A", fontSize: 12.5 }}>{driver.phone ?? "No phone on file"}</span>
+                          {driver.startTime && driver.endTime ? (
+                            <span className="mono avail-chip">{driver.startTime}–{driver.endTime}</span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span style={{ color: "#00877A", fontWeight: 700, fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                        {isAssigning ? <span className="spinner" /> : null}
+                        {isAssigning ? "Assigning…" : "Assign"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

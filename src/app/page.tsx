@@ -9,6 +9,7 @@ import { getSession } from "@/lib/auth/session";
 
 export default async function Home() {
   const session = await getSession();
+  if (session?.role === "admin") redirect("/admin/dashboard");
   if (session?.role === "driver") redirect("/my-trips");
 
   return (
