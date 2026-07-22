@@ -123,6 +123,7 @@ export default async function MyTripsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login?redirect=/my-requests");
+  if (session.role === "admin") redirect("/admin/dashboard");
 
   const params = await searchParams;
   const payment =

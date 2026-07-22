@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { User } from "@/models/User";
 import { connectDB } from "@/lib/db/mongoose";
 import { Users, ShieldCheck } from "lucide-react";
+import AdminLogoutButton from "@/components/admin/AdminLogoutButton";
 
 export default async function AdminUsersPage() {
   const session = await getSession();
@@ -20,7 +21,10 @@ export default async function AdminUsersPage() {
             <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "#00C2A8" }}>Admin panel</p>
             <h1 style={{ margin: "6px 0 0", fontSize: "clamp(28px, 4vw, 36px)", fontWeight: 800, color: "#0B1E3D" }}>Users</h1>
           </div>
-          <a href="/admin/dashboard" style={{ textDecoration: "none", padding: "11px 16px", borderRadius: 999, color: "#0B1E3D", fontWeight: 700, background: "#ffffff", border: "1px solid #e8edf0" }}>Back to dashboard</a>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <a href="/admin/dashboard" style={{ textDecoration: "none", padding: "11px 16px", borderRadius: 999, color: "#0B1E3D", fontWeight: 700, background: "#ffffff", border: "1px solid #e8edf0" }}>Back to dashboard</a>
+            <AdminLogoutButton />
+          </div>
         </div>
 
         <section style={{ borderRadius: 24, background: "#ffffff", border: "1px solid #e8edf0", boxShadow: "0 10px 35px rgba(11,30,61,0.05)", overflow: "hidden" }}>

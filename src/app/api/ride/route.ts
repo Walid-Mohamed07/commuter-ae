@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbConnect } from "@/lib/mongodb";
 import { createRide, getRidesByDriver } from "@/lib/services/rideService";
 
-// POST /api/rides — create a ride from a match result
 export async function POST(req: NextRequest) {
   try {
+    await dbConnect();
     const body = await req.json();
     const ride = await createRide(body);
     return NextResponse.json({ data: ride }, { status: 201 });
@@ -15,18 +16,15 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/rides?driverId=...&date=YYYY-MM-DD — list rides for a driver
 export async function GET(req: NextRequest) {
   try {
+    await dbConnect();
     const { searchParams } = new URL(req.url);
     const driverId = searchParams.get("driverId");
     const date = searchParams.get("date") ?? undefined;
 
     if (!driverId) {
-      return NextResponse.json(
-        { error: "driverId is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "driverId is required" }, { status: 400 });
     }
 
     const rides = await getRidesByDriver(driverId, date);
