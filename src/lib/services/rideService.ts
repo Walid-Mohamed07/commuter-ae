@@ -33,14 +33,6 @@ async function createRide(matchResult: MatchResult) {
     ).session(session);
     if (!availability) throw new Error("Availability not found");
 
-    // check seats
-    const seatsRequested = matchResult.passengers.reduce(
-      (s, p) => s + (p.numberOfPassengers || 1),
-      0,
-    );
-    if (availability.seatsRemaining < seatsRequested)
-      throw new Error("Not enough seats in availability");
-
     const passengersForRide = matchResult.passengers.map((p) => ({
       tripId: p.tripId,
       userId: p.userId || null,
@@ -73,14 +65,9 @@ async function createRide(matchResult: MatchResult) {
 
     await rideDoc.save({ session });
 
-    // update availability
+    // update availability (no seatsRemaining tracking for now)
     availability.rideId = rideDoc._id;
-    availability.seatsRemaining = Math.max(
-      0,
-      availability.seatsRemaining - seatsRequested,
-    );
-    availability.status =
-      availability.seatsRemaining === 0 ? "full" : "matched";
+    availability.status = "matched";
     await availability.save({ session });
 
     // update trips
@@ -218,8 +205,7 @@ async function addPassengerToRide(
       ride.availabilityId,
     ).session(session);
     if (!availability) throw new Error("Availability not found");
-    if (availability.seatsRemaining < (passenger.numberOfPassengers || 1))
-      throw new Error("Not enough seats");
+    // no seatsRemaining checks for now
 
     ride.passengers.push({
       tripId: passenger.tripId,
@@ -235,12 +221,8 @@ async function addPassengerToRide(
     // recompute route
     ride.route = recalculateRouteFromPassengers(ride.passengers as any[]);
 
-    availability.seatsRemaining = Math.max(
-      0,
-      availability.seatsRemaining - (passenger.numberOfPassengers || 1),
-    );
-    availability.status =
-      availability.seatsRemaining === 0 ? "full" : "matched";
+    // do not modify seatsRemaining; keep availability marked matched
+    availability.status = "matched";
 
     await Trip.findByIdAndUpdate(
       passenger.tripId,
@@ -280,18 +262,10 @@ async function removePassengerFromRide(
     );
     if (!passenger) throw new Error("Passenger not in ride");
 
-    const seatsToRelease = passenger.numberOfPassengers || 1;
-
     ride.passengers = ride.passengers.filter(
       (p: any) => p.tripId?.toString() !== tripId.toString(),
     );
     ride.route = recalculateRouteFromPassengers(ride.passengers as any[]);
-
-    availability.seatsRemaining =
-      (availability.seatsRemaining || 0) + seatsToRelease;
-    if (availability.status === "matched" || availability.status === "full") {
-      availability.status = "open";
-    }
 
     await Trip.findByIdAndUpdate(
       tripId,
