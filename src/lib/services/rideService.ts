@@ -28,9 +28,9 @@ async function createRide(matchResult: MatchResult) {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const availability = await Availability.findById(
-      matchResult.availabilityId,
-    ).session(session);
+    const availability = await Availability.find({
+      _id: matchResult.availabilityId,
+    }).session(session);
     if (!availability) throw new Error("Availability not found");
 
     // check seats
