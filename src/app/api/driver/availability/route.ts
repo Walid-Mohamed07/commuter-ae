@@ -40,13 +40,14 @@ export async function POST(req: NextRequest) {
 
   await connectDB();
   const driver = await Driver.findOne({ userId: session.userId })
-    .select("verificationStatus")
-    .lean<{ verificationStatus?: string }>();
+    .select("verificationStatus carCapacity")
+    .lean<{ verificationStatus?: string; carCapacity?: number }>();
   if (driver?.verificationStatus !== "verified")
     return NextResponse.json(
       { error: "Your profile must be verified before adding availability." },
       { status: 403 },
     );
+  const seats = driver?.carCapacity ?? 4;
 
   try {
     const { dates, startLocation, endLocation, startTime, endTime } =
@@ -120,6 +121,7 @@ export async function POST(req: NextRequest) {
           lat: endLocation.lat,
           lng: endLocation.lng,
         },
+        seatsRemaining: seats,
         ...(startNearestStation && {
           startNearestStation: {
             id: startNearestStation.id,
