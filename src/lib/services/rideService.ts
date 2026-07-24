@@ -324,14 +324,7 @@ async function cancelRide(rideId: string | Types.ObjectId, reason?: string) {
       ).session(session);
       if (availability) {
         availability.rideId = null;
-        availability.seatsRemaining =
-          (availability.seatsRemaining || 0) + seats;
-        if (
-          availability.status === "matched" ||
-          availability.status === "full"
-        ) {
-          availability.status = "open";
-        }
+        availability.status = "open";
         await availability.save({ session });
       }
     }

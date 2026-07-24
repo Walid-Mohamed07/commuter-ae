@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbConnect } from "@/lib/mongodb";
+import { connectDB } from "@/lib/db/mongoose";
 import { createRide, getRidesByDriver } from "@/lib/services/rideService";
 
 export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
+    await connectDB();
     const body = await req.json();
     const ride = await createRide(body);
     return NextResponse.json({ data: ride }, { status: 201 });
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    await dbConnect();
+    await connectDB();
     const { searchParams } = new URL(req.url);
     const driverId = searchParams.get("driverId");
     const date = searchParams.get("date") ?? undefined;

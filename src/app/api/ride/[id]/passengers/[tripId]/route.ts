@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db/mongoose";
 import {
   updatePassengerStatusInRide,
   removePassengerFromRide,
@@ -10,6 +11,7 @@ export async function PATCH(
   { params }: { params: any },
 ) {
   try {
+    await connectDB();
     const { status } = await req.json();
     if (!status) {
       return NextResponse.json(
@@ -43,6 +45,7 @@ export async function DELETE(
   { params }: { params: any },
 ) {
   try {
+    await connectDB();
     const { reason } = await req.json().catch(() => ({ reason: undefined }));
     const ride = await removePassengerFromRide(
       params.id,

@@ -44,9 +44,8 @@ const RideSchema = new Schema(
     },
     availabilityId: {
       type: Types.ObjectId,
-      ref: "Availability",
+      ref: "availabilities",
       required: true,
-      index: true,
     },
     driverId: {
       type: Types.ObjectId,
