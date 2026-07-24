@@ -19,8 +19,12 @@ type MatchResult = {
     pickupOrder: number;
     dropoffOrder: number;
     numberOfPassengers: number;
+    tripCost: number;
     priceEgp?: number;
   }>;
+  totalCost?: number;
+  status?: string;
+  seatsRemaining?: number;
   route?: any[]; // StopSchema-compatible array optional; if absent will be calculated
 };
 
@@ -40,6 +44,7 @@ async function createRide(matchResult: MatchResult) {
       dropoff: p.dropoff,
       pickupOrder: p.pickupOrder,
       dropoffOrder: p.dropoffOrder,
+      tripCost: p.priceEgp || 0,
       numberOfPassengers: p.numberOfPassengers || 1,
       status: "waiting",
     }));
@@ -55,6 +60,10 @@ async function createRide(matchResult: MatchResult) {
       startTime: matchResult.startTime,
       endTime: matchResult.endTime,
       passengers: passengersForRide,
+      totalCost: passengersForRide.reduce(
+        (sum, p) => sum + (p.tripCost || 0),
+        0,
+      ),
       route: matchResult.route || [],
     });
 
@@ -293,6 +302,19 @@ async function recalculateRoute(rideId: string | Types.ObjectId) {
   return ride;
 }
 
+async function getRideByPassengerIncluded(
+  passengerId: string | Types.ObjectId,
+) {
+  // Match either a passenger's tripId or userId to be flexible about passed id
+  const q: any = {
+    $or: [
+      { "passengers.tripId": passengerId },
+      { "passengers.userId": passengerId },
+    ],
+  };
+  return Ride.find(q).sort({ date: -1, startTime: 1 }).lean();
+}
+
 async function cancelRide(rideId: string | Types.ObjectId, reason?: string) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -344,6 +366,7 @@ export {
   getRideById,
   getRideByNumber,
   getRidesByDriver,
+  getRideByPassengerIncluded,
   getActiveRideForDriver,
   getRideByAvailability,
   updateRideStatus,

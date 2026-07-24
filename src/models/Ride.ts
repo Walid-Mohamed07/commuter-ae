@@ -23,6 +23,7 @@ const RidePassengerSchema = new Schema(
     pickupOrder: { type: Number, required: true, min: 0 },
     dropoffOrder: { type: Number, required: true, min: 0 },
     numberOfPassengers: { type: Number, required: true, min: 1, default: 1 },
+    tripCost: { type: Number, required: true, min: 0, default: 0 },
     status: {
       type: String,
       required: true,
@@ -76,6 +77,7 @@ const RideSchema = new Schema(
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
     passengers: { type: [RidePassengerSchema], default: [] },
+    totalCost: { type: Number, required: true, default: 0 },
     status: {
       type: String,
       required: true,
