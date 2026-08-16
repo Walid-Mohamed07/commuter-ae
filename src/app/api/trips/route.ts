@@ -5,11 +5,16 @@ import { Request } from "@/models/Request";
 import { Trip } from "@/models/Trip";
 import { nextSequence } from "@/models/Counter";
 import { Station } from "@/models/Station";
+import { User } from "@/models/User";
 import {
   VEHICLES,
   computeTripPriceEgp,
   type VehicleKey,
 } from "@/lib/config/vehicles";
+import {
+  isVehicleAvailableInRegion,
+  normalizeRegion,
+} from "@/lib/config/regions";
 import { bookingWindow, isDateInWindow } from "@/lib/time/bookingDates";
 import { getVehicles } from "@/lib/db/getVehicles";
 import {
@@ -23,10 +28,6 @@ import type { PaymentStatus } from "@/types/booking";
 import { listUserTrips } from "@/lib/services/trips";
 import { createNotification } from "@/lib/notifications/createNotification";
 import { Types } from "mongoose";
-import {
-  getActiveDiscountForUser,
-  getReferralDiscountAllocations,
-} from "@/lib/referral";
 import {
   applyPromoCodeToTrip,
   computePromoDiscountedPrice,
@@ -107,7 +108,6 @@ export async function POST(req: NextRequest) {
     dates?: string[];
     trips: TripInput[];
     note?: string;
-    useReferralDiscount?: boolean;
     promoCode?: string | null;
   };
   try {
@@ -118,7 +118,6 @@ export async function POST(req: NextRequest) {
 
   const { trips } = body;
   const rawDates = body.dates ?? (body.date ? [body.date] : []);
-  const useReferralDiscount = body.useReferralDiscount === true;
   const promoCodeInput =
     typeof body.promoCode === "string" ? body.promoCode : "";
   const promoCode = promoCodeInput.trim()
@@ -154,9 +153,18 @@ export async function POST(req: NextRequest) {
   }
 
   const vehiclesMap = await getVehicles();
-  const allowedVehicleSet = new Set(Object.keys(vehiclesMap));
 
   await connectDB();
+
+  const userRegionDoc = await User.findById(userId).select("region").lean<{
+    region?: string;
+  }>();
+  const userRegion = normalizeRegion(userRegionDoc?.region);
+  const allowedVehicleSet = new Set(
+    Object.keys(vehiclesMap).filter((key) =>
+      isVehicleAvailableInRegion(key, userRegion),
+    ),
+  );
   const stationDocs = await Station.find({ active: true }).lean();
   const canonicalStations: GeoStation[] = stationDocs.map((station) => ({
     id: station.objectId,
@@ -494,22 +502,6 @@ export async function POST(req: NextRequest) {
     })),
   );
 
-  let referralAllocations: Array<{
-    usageId: string;
-    discountPercentage: number;
-  }> = [];
-  if (useReferralDiscount) {
-    // Server-authoritative guard: only apply discounts if the user currently has
-    // an active referral usage and reservations are still available.
-    const activeDiscount = await getActiveDiscountForUser(userId);
-    if (activeDiscount) {
-      referralAllocations = await getReferralDiscountAllocations(
-        userId,
-        tripInstances.length,
-      );
-    }
-  }
-
   const promoApplies: Array<{
     success: boolean;
     discountType: PromoDiscountType;
@@ -555,44 +547,30 @@ export async function POST(req: NextRequest) {
   }
 
   const pricedTripInstances = tripInstances.map((instance, index) => {
-    const allocation = referralAllocations[index];
     const promoApply = promoApplies[index];
     const basePriceEgp = instance.trip.priceEgp;
-    const referralPct = allocation?.discountPercentage ?? 0;
-
-    // Promo discount is computed as its own step so a future stacking rewrite
-    // can combine it with whatever the referral discount becomes.
-    const priceAfterReferral = Math.round(
-      basePriceEgp * (1 - referralPct / 100),
-    );
     const priceAfterPromo = promoApply
       ? Math.round(
           computePromoDiscountedPrice(
-            priceAfterReferral,
+            basePriceEgp,
             promoApply.discountType,
             promoApply.discountValue,
           ),
         )
-      : priceAfterReferral;
+      : basePriceEgp;
     const promoDiscountAmountEgp = promoApply
-      ? Math.max(0, priceAfterReferral - priceAfterPromo)
+      ? Math.max(0, basePriceEgp - priceAfterPromo)
       : 0;
     const priceEgp = priceAfterPromo;
     return {
       ...instance,
       basePriceEgp,
       priceEgp,
-      allocation,
       promoApply,
       promoDiscountAmountEgp,
     };
   });
 
-  const referralDiscountAppliedTrips = pricedTripInstances.reduce(
-    (count, instance) => count + (instance.allocation ? 1 : 0),
-    0,
-  );
-  const referralDiscountApplied = referralDiscountAppliedTrips > 0;
   const promoCodeAppliedTrips = pricedTripInstances.reduce(
     (count, instance) => count + (instance.promoApply ? 1 : 0),
     0,
@@ -631,10 +609,6 @@ export async function POST(req: NextRequest) {
         ...instance.trip,
         basePriceEgp: instance.basePriceEgp,
         priceEgp: instance.priceEgp,
-        ...(instance.allocation && {
-          referralUsageId: new Types.ObjectId(instance.allocation.usageId),
-          referralDiscountPercentage: instance.allocation.discountPercentage,
-        }),
         ...(instance.promoApply && {
           appliedPromoCode: new Types.ObjectId(instance.promoApply.promoCodeId),
           promoDiscountType: instance.promoApply.discountType,
@@ -659,11 +633,6 @@ export async function POST(req: NextRequest) {
       {
         bookingId: String(request._id),
         amountEgp,
-        useReferralDiscount,
-        referralDiscountApplied,
-        referralDiscountAppliedTrips,
-        referralDiscountUnavailable:
-          useReferralDiscount && !referralDiscountApplied,
         promoCode,
         promoCodeApplied,
         promoCodeAppliedTrips,

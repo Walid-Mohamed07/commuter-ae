@@ -1,17 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Loader2, Share2, TicketPercent } from "lucide-react";
+import { Check, Copy, Loader2, Share2, WalletCards } from "lucide-react";
 import { useClientLocale } from "@/lib/i18n/client";
 
 interface ReferralData {
   referralCode: string;
   shareUrl: string;
+  balanceEgp: number;
+  referrerBonusAmount: number;
   stats: {
     total: number;
-    active: number;
-    exhausted: number;
-    tripsRemaining: number;
+    pending: number;
+    credited: number;
   };
 }
 
@@ -86,14 +87,17 @@ export default function ReferralCard() {
             color: "#00877A",
           }}
         >
-          <TicketPercent size={20} aria-hidden="true" />
+          <WalletCards size={20} aria-hidden="true" />
         </span>
         <div>
           <h2 style={{ margin: 0, fontSize: 16, color: "#0B1E3D" }}>
             {t("referral.title")}
           </h2>
           <p style={{ margin: "3px 0 0", fontSize: 13, color: "#5A6A7A" }}>
-            {t("referral.description")}
+            {t("referral.description").replace(
+              "{amount}",
+              String(data?.referrerBonusAmount ?? 0),
+            )}
           </p>
         </div>
       </div>
@@ -130,16 +134,6 @@ export default function ReferralCard() {
             >
               {copied ? <Check size={18} /> : <Copy size={18} />}
             </button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
-            <div style={{ padding: 12, borderRadius: 10, background: "#f8f9fa" }}>
-              <strong style={{ display: "block", color: "#0B1E3D", fontSize: 18 }}>{data.stats.total}</strong>
-              <span style={{ color: "#5A6A7A", fontSize: 12 }}>{t("referral.friends_joined")}</span>
-            </div>
-            <div style={{ padding: 12, borderRadius: 10, background: "#f8f9fa" }}>
-              <strong style={{ display: "block", color: "#0B1E3D", fontSize: 18 }}>{data.stats.tripsRemaining}</strong>
-              <span style={{ color: "#5A6A7A", fontSize: 12 }}>{t("referral.discounted_trips")}</span>
-            </div>
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <button type="button" onClick={copyLink} style={buttonStyle("#0B1E3D")}>
