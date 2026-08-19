@@ -5,6 +5,10 @@ import { Trip, type TripDoc } from "../../models/Trip";
 import { Availability, type AvailabilityDoc } from "../../models/Availability";
 import type { RideDetailView, RideListRow, RideStatus } from "@/types/booking";
 import type { GeoPoint, StationSelection } from "@/types/geo";
+import {
+  getSharedRouteStopCounts,
+  normalizeSharedRidePassengers,
+} from "@/lib/services/sharedRideManifest";
 
 type MatchResult = {
   availabilityId: Types.ObjectId | string;
@@ -257,18 +261,6 @@ function recalculateRouteFromPassengers(passengers: any[]) {
   return stops;
 }
 
-function routeStopCount(value: unknown): number {
-  if (Array.isArray(value)) return value.length;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
-
-
 function toGeoPoint(
   raw: Record<string, unknown> | null | undefined,
 ): GeoPoint | null {
@@ -313,6 +305,12 @@ function toStation(
   };
 }
 
+function getRidePassengers(
+  ride: Record<string, unknown>,
+): Record<string, unknown>[] {
+  return normalizeSharedRidePassengers(ride);
+}
+
 function mapPassengerRow(p: Record<string, any>, index = 0, array: Record<string, any>[] = []) {
   let seatNumbers: number[] = Array.isArray(p.seatNumbers) && p.seatNumbers.length > 0 ? p.seatNumbers : [];
   if (seatNumbers.length === 0) {
@@ -341,7 +339,8 @@ function mapPassengerRow(p: Record<string, any>, index = 0, array: Record<string
 }
 
 function mapRideToDetailView(ride: Record<string, any>): RideDetailView {
-  const passengers = (ride.passengers ?? []).map((p: Record<string, any>, i: number, arr: Record<string, any>[]) => ({
+  const ridePassengers = getRidePassengers(ride);
+  const passengers = ridePassengers.map((p: Record<string, any>, i: number, arr: Record<string, any>[]) => ({
     ...mapPassengerRow(p, i, arr),
     pickup: toGeoPoint(p.pickup),
     dropoff: toGeoPoint(p.dropoff),
@@ -363,13 +362,16 @@ function mapRideToDetailView(ride: Record<string, any>): RideDetailView {
       0,
     ),
     passengers,
-    route: (ride.route ?? []).map((stop: Record<string, any>) => ({
-      address: stop.point?.address ?? "—",
-      point: toGeoPoint(stop.point),
-      boarding: routeStopCount(stop.boarding ?? stop.boardingNumber ?? 0),
-      alighting: routeStopCount(stop.alighting ?? stop.alightingNumber ?? 0),
-      waitingMinutes: stop.waitingMinutes ?? 0,
-    })),
+    route: (ride.route ?? []).map((stop: Record<string, any>) => {
+      const counts = getSharedRouteStopCounts(stop);
+      return {
+        address: stop.point?.address ?? "—",
+        point: toGeoPoint(stop.point),
+        boarding: counts.boarding,
+        alighting: counts.alighting,
+        waitingMinutes: stop.waitingMinutes ?? 0,
+      };
+    }),
     pickupStation: toStation(ride.pickupStation),
     dropoffStation: toStation(ride.dropoffStation),
     driverOrigin: toGeoPoint(ride.driverOrigin),
@@ -396,7 +398,11 @@ async function getDriverRide(
   if (!ride) {
     ride = await Ride.findOne({
       driverId: driverOid,
-      "passengers.tripId": lookupId,
+      $or: [
+        { "passengers.tripId": lookupId },
+        { "route.boarding.tripId": lookupId },
+        { "route.alighting.tripId": lookupId },
+      ],
     }).lean();
   }
 
@@ -405,7 +411,8 @@ async function getDriverRide(
   const { User } = await import("@/models/User");
   const { Station } = await import("@/models/Station");
 
-  const userIds = (ride.passengers ?? [])
+  const ridePassengers = getRidePassengers(ride as Record<string, any>);
+  const userIds = ridePassengers
     .map((p: any) => p.userId)
     .filter(Boolean);
   const users = await User.find({ _id: { $in: userIds } })
@@ -417,9 +424,17 @@ async function getDriverRide(
   const stationIds: number[] = [];
   if (ride.pickupStation?.id) stationIds.push(ride.pickupStation.id);
   if (ride.dropoffStation?.id) stationIds.push(ride.dropoffStation.id);
-  for (const p of ride.passengers ?? []) {
-    if (p.pickupStation?.id) stationIds.push(p.pickupStation.id);
-    if (p.dropoffStation?.id) stationIds.push(p.dropoffStation.id);
+  for (const p of ridePassengers) {
+    const passengerStations = p as {
+      pickupStation?: { id?: number };
+      dropoffStation?: { id?: number };
+    };
+    if (passengerStations.pickupStation?.id) {
+      stationIds.push(passengerStations.pickupStation.id);
+    }
+    if (passengerStations.dropoffStation?.id) {
+      stationIds.push(passengerStations.dropoffStation.id);
+    }
   }
 
   const stationDocs = stationIds.length > 0
@@ -444,7 +459,7 @@ async function getDriverRide(
     ...ride,
     pickupStation: enrichStation(ride.pickupStation),
     dropoffStation: enrichStation(ride.dropoffStation),
-    passengers: (ride.passengers ?? []).map((p: any) => ({
+    passengers: ridePassengers.map((p: any) => ({
       ...p,
       pickupStation: enrichStation(p.pickupStation),
       dropoffStation: enrichStation(p.dropoffStation),
@@ -483,8 +498,9 @@ export interface ListDriverRidesOptions {
 }
 
 function mapRideToListRow(ride: Record<string, any>): RideListRow {
-  const passengers = (ride.passengers ?? []).map((p: Record<string, any>) =>
-    mapPassengerRow(p),
+  const ridePassengers = getRidePassengers(ride);
+  const passengers = ridePassengers.map((p: Record<string, any>, index: number) =>
+    mapPassengerRow(p, index, ridePassengers),
   );
 
   return {
@@ -503,12 +519,15 @@ function mapRideToListRow(ride: Record<string, any>): RideListRow {
       0,
     ),
     passengers,
-    route: (ride.route ?? []).map((stop: Record<string, any>) => ({
-      address: stop.point?.address ?? "—",
-      boarding: routeStopCount(stop.boarding ?? stop.boardingNumber ?? 0),
-      alighting: routeStopCount(stop.alighting ?? stop.alightingNumber ?? 0),
-      waitingMinutes: stop.waitingMinutes ?? 0,
-    })),
+    route: (ride.route ?? []).map((stop: Record<string, any>) => {
+      const counts = getSharedRouteStopCounts(stop);
+      return {
+        address: stop.point?.address ?? "—",
+        boarding: counts.boarding,
+        alighting: counts.alighting,
+        waitingMinutes: stop.waitingMinutes ?? 0,
+      };
+    }),
     pickupStation: toStation(ride.pickupStation),
     dropoffStation: toStation(ride.dropoffStation),
     createdAt:
@@ -751,11 +770,13 @@ async function cancelRide(rideId: string | Types.ObjectId, reason?: string) {
     await ride.save({ session });
 
     // unlink trips
-    const tripIds = ride.passengers.map((p: any) => p.tripId);
-    const seats = ride.passengers.reduce(
-      (s: number, p: any) => s + (p.numberOfPassengers || 1),
-      0,
-    );
+    const tripIds = [...new Set([
+      ...ride.passengers.map((passenger: any) => String(passenger.tripId)),
+      ...ride.route.flatMap((stop: any) => [
+        ...(Array.isArray(stop.boarding) ? stop.boarding : []),
+        ...(Array.isArray(stop.alighting) ? stop.alighting : []),
+      ]).map((passenger: any) => String(passenger.tripId)),
+    ].filter((tripId) => Types.ObjectId.isValid(tripId)))];
 
     await Trip.updateMany(
       { _id: { $in: tripIds } },
