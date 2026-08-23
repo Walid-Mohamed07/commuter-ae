@@ -8,6 +8,7 @@ import { Trip } from "@/models/Trip";
 import { Ride } from "@/models/Ride";
 import { User } from "@/models/User";
 import { getDriverSummaryByUserNumber } from "@/lib/services/trips";
+import { adminAuth } from "@/lib/middleware/adminAuth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -505,6 +506,9 @@ async function getDriverBundleByUserId(userId: unknown) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await adminAuth();
+  if (!auth.authorized) return auth.response;
+
   try {
     await connectDB();
 
@@ -1178,12 +1182,14 @@ export async function POST(req: NextRequest) {
         if (matchedTripIds.length > 0) {
           const tripDocs = await Trip.find({ _id: { $in: matchedTripIds } })
             .select("_id tripNumber summary details")
-            .lean<{
-              _id: unknown;
-              tripNumber: number | string;
-              summary?: Record<string, unknown>;
-              details?: Record<string, unknown>;
-            }[]>();
+            .lean<
+              {
+                _id: unknown;
+                tripNumber: number | string;
+                summary?: Record<string, unknown>;
+                details?: Record<string, unknown>;
+              }[]
+            >();
 
           const tripWrites = tripDocs.map((tripDoc) => {
             const tripNumber = Number(tripDoc.tripNumber);
@@ -1194,8 +1200,7 @@ export async function POST(req: NextRequest) {
             const matchedPassenger = route
               .flatMap((stop) => [...stop.boarding, ...stop.alighting])
               .find(
-                (passenger) =>
-                  String(passenger.tripId) === String(tripDoc._id),
+                (passenger) => String(passenger.tripId) === String(tripDoc._id),
               );
 
             return {
