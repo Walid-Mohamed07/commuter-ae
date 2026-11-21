@@ -18,7 +18,6 @@ import {
   VEHICLES,
   computePrivateTripPriceEgp,
   computeTripPriceEgp,
-  getVehiclePassengerCapacity,
   priceForSelectedDate,
 } from "@/lib/config/vehicles";
 import {
@@ -87,6 +86,7 @@ import {
   spacingLockUpsertFields,
 } from "@/lib/phase8bGuards";
 import { ensureTripSpacingLockTtlIndex } from "@/lib/tripSpacingLockIndex";
+import { expireStaleForUser } from "@/lib/services/requests";
 import {
   notifyAdminsOfWaitingListRequest,
   notifyAdminsOfWaitingListTripBatch,
@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const userId = session.userId;
+  await expireStaleForUser(userId);
   let requestGroupEnabledForRequest = false;
   let requestGroupIdForLog: string | null = null;
   let requestGroupDateCount = 0;
@@ -415,17 +416,28 @@ export async function POST(req: NextRequest) {
     const vKey = t.vehicleType;
     const vehicle = vehiclesMap[vKey];
     const tripRideType = vehicle.ride;
-    const vehicleCapacity = getVehiclePassengerCapacity(vKey);
+    const vehicleCapacity = vehicle.capacity;
+    if (!Number.isInteger(vehicleCapacity) || vehicleCapacity < 1) {
+      return NextResponse.json(
+        { error: "Vehicle capacity is not configured for this region." },
+        { status: 503 },
+      );
+    }
     const requestedPassengerCount = Number(t.numberOfPassengers ?? 1);
     const numberOfPassengers = getTripPassengerCount(
       vKey,
       requestedPassengerCount,
       Number(t.extraPassengers ?? 0),
+      tripRideType,
     );
     if (
       !Number.isInteger(requestedPassengerCount) ||
       requestedPassengerCount < 1 ||
-      !isVehiclePassengerCountAllowed(vKey, numberOfPassengers)
+      !isVehiclePassengerCountAllowed(
+        vKey,
+        numberOfPassengers,
+        vehicleCapacity,
+      )
     ) {
       return NextResponse.json(
         {
@@ -965,10 +977,19 @@ export async function POST(req: NextRequest) {
         return Trip.countDocuments({
           userId: new Types.ObjectId(pendingUserId),
           $or: [
-            { status: { $in: ["pending_payment", "waiting_list"] } },
+            {
+              status: {
+                $in: [
+                  "pending_payment",
+                  "waiting_list",
+                  "private_ride_offered",
+                ],
+              },
+              paymentStatus: { $in: ["pending", "failed"] },
+            },
             {
               status: "approved",
-              paymentStatus: { $nin: ["paid", "refunded"] },
+              paymentStatus: { $nin: ["paid", "refunded", "expired"] },
             },
           ],
         }).session(dbSession);
